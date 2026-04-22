@@ -1,14 +1,10 @@
 "use client";
 
-/**
- * Chat View Component
- * Main interface for the tutor chatbot
- */
-
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { MessageBubble } from "./message-bubble";
 
 interface Message {
+  id: string;
   role: "user" | "assistant";
   content: string;
 }
@@ -16,34 +12,37 @@ interface Message {
 export function ChatView() {
   const [messages, setMessages] = useState<Message[]>([
     {
+      id: "1",
       role: "assistant",
       content:
-        "Ciao! Sono il tuo tutor personale per AI engineering. Che cosa vuoi imparare oggi?",
+        "Ciao! Sono il tuo tutor personale per imparare AI engineering. Sono qui per aiutarti con domande pratiche, esempi di codice e percorsi di apprendimento concreti. Cosa vuoi imparare oggi?",
     },
   ]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!input.trim()) return;
+    if (!input.trim() || loading) return;
 
-    // Add user message to chat
     const userMessage: Message = {
+      id: Date.now().toString(),
       role: "user",
       content: input,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
-    setIsLoading(true);
+    setLoading(true);
 
     try {
       const response = await fetch("/api/chat", {
@@ -52,114 +51,112 @@ export function ChatView() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage],
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          userMessage: input,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("API request failed");
+        throw new Error(`API error: ${response.status}`);
       }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No response body");
 
-      let assistantMessage = "";
-
-      // Read SSE stream
       const decoder = new TextDecoder();
+      let assistantContent = "";
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const text = decoder.decode(value);
-        const lines = text.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") continue;
-
-            try {
-              const chunk = JSON.parse(data);
-              if (chunk.content) {
-                assistantMessage += chunk.content;
-              }
-            } catch (e) {
-              // Skip parsing errors
-            }
-          }
-        }
+        const chunk = decoder.decode(value);
+        assistantContent += chunk;
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
+      if (assistantContent.trim()) {
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: assistantMessage || "Scusa, non ho potuto processare la tua richiesta.",
-        },
-      ]);
+          content: assistantContent,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "Scusa, c'è stato un errore. Riprovare più tardi.",
-        },
-      ]);
+      const errorMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        role: "assistant",
+        content: `Errore nella comunicazione con il tutor. Dettagli: ${error instanceof Error ? error.message : "Errore sconosciuto"}`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="sd-flex sd-flex-col sd-h-screen sd-bg-canvas">
+    <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
-      <div className="sd-bg-surface sd-border-b sd-border-border-default sd-p-lg sd-shadow-sm">
-        <h1 className="sd-text-2xl sd-font-bold sd-text-primary">
-          Soli Prof
-        </h1>
-        <p className="sd-text-secondary sd-text-sm">
-          Il tuo tutor personale per AI engineering
-        </p>
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <h1 className="text-2xl font-bold text-gray-900">Soli Prof</h1>
+          <p className="text-sm text-gray-600">
+            Il tuo tutor personale per AI engineering
+          </p>
+        </div>
       </div>
 
       {/* Messages Container */}
-      <div className="sd-flex-1 sd-overflow-y-auto sd-p-lg sd-space-y-4">
-        {messages.map((message, index) => (
-          <MessageBubble
-            key={index}
-            role={message.role}
-            content={message.content}
-          />
-        ))}
-        <div ref={messagesEndRef} />
+      <div className="flex-1 overflow-y-auto bg-gray-50">
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              role={message.role}
+              content={message.content}
+            />
+          ))}
+          {loading && (
+            <div className="flex justify-start mb-4">
+              <div className="bg-gray-200 text-gray-900 px-4 py-3 rounded-lg rounded-bl-none">
+                <div className="flex space-x-2">
+                  <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce delay-100"></div>
+                  <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce delay-200"></div>
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={scrollRef} />
+        </div>
       </div>
 
       {/* Input Form */}
-      <form
-        onSubmit={handleSendMessage}
-        className="sd-border-t sd-border-border-default sd-bg-surface sd-p-lg"
-      >
-        <div className="sd-flex sd-gap-md">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={isLoading}
-            placeholder="Scrivi la tua domanda..."
-            className="sd-flex-1 sd-px-md sd-py-sm sd-rounded-md sd-border sd-border-border-default sd-bg-canvas sd-text-primary placeholder:sd-text-tertiary focus:sd-outline-none focus:sd-ring-2 focus:sd-ring-primary disabled:sd-opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !input.trim()}
-            className="sd-px-lg sd-py-sm sd-rounded-md sd-bg-primary sd-text-white sd-font-semibold hover:sd-bg-primary-hover active:sd-bg-primary-active disabled:sd-opacity-50 disabled:sd-cursor-not-allowed transition-colors"
-          >
-            {isLoading ? "..." : "Invia"}
-          </button>
-        </div>
-      </form>
+      <div className="bg-white border-t border-gray-200 shadow-lg">
+        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto p-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Scrivi la tua domanda..."
+              disabled={loading}
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+            />
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
+            >
+              {loading ? "..." : "Invia"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
