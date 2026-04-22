@@ -22,7 +22,6 @@ export function ChatView() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
@@ -31,31 +30,32 @@ export function ChatView() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!input.trim() || loading) return;
 
+    const userMessageContent = input;
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input,
+      content: userMessageContent,
     };
+    const assistantId = (Date.now() + 1).toString();
 
-    setMessages((prev) => [...prev, userMessage]);
+    // Aggiunge user + placeholder assistant vuoto che verrà riempito dallo streaming
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      { id: assistantId, role: "assistant", content: "" },
+    ]);
     setInput("");
     setLoading(true);
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-          userMessage: input,
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+          userMessage: userMessageContent,
         }),
       });
 
@@ -68,31 +68,53 @@ export function ChatView() {
 
       const decoder = new TextDecoder();
       let assistantContent = "";
+      let errored = false;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        assistantContent += chunk;
-      }
+        const chunk = decoder.decode(value, { stream: true });
 
-      if (assistantContent.trim()) {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: assistantContent,
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
+        // Filtra marker del server
+        let cleaned = chunk;
+        if (cleaned.includes("[DONE]")) {
+          cleaned = cleaned.replace(/\n?\[DONE\]/g, "");
+        }
+        const errorMatch = cleaned.match(/\n?\[ERROR\]:\s*(.*)/);
+        if (errorMatch) {
+          errored = true;
+          const errMsg = errorMatch[1] || "Errore sconosciuto";
+          assistantContent = `Errore nella comunicazione con il tutor. Dettagli: ${errMsg}`;
+          cleaned = "";
+        }
+
+        if (cleaned) {
+          assistantContent += cleaned;
+        }
+
+        // Aggiornamento in tempo reale del messaggio assistant
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, content: assistantContent } : m
+          )
+        );
+
+        if (errored) break;
       }
     } catch (error) {
-      console.error("Chat error:", error);
-      const errorMessage: Message = {
-        id: (Date.now() + 2).toString(),
-        role: "assistant",
-        content: `Errore nella comunicazione con il tutor. Dettagli: ${error instanceof Error ? error.message : "Errore sconosciuto"}`,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      const errMsg =
+        error instanceof Error ? error.message : "Errore sconosciuto";
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+              ...m,
+              content: `Errore nella comunicazione con il tutor. Dettagli: ${errMsg}`,
+            }
+            : m
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -100,7 +122,6 @@ export function ChatView() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <h1 className="text-2xl font-bold text-gray-900">Soli Prof</h1>
@@ -110,7 +131,6 @@ export function ChatView() {
         </div>
       </div>
 
-      {/* Messages Container */}
       <div className="flex-1 overflow-y-auto bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 py-6">
           {messages.map((message) => (
@@ -120,7 +140,7 @@ export function ChatView() {
               content={message.content}
             />
           ))}
-          {loading && (
+          {loading && messages[messages.length - 1]?.content === "" && (
             <div className="flex justify-start mb-4">
               <div className="bg-gray-200 text-gray-900 px-4 py-3 rounded-lg rounded-bl-none">
                 <div className="flex space-x-2">
@@ -135,7 +155,6 @@ export function ChatView() {
         </div>
       </div>
 
-      {/* Input Form */}
       <div className="bg-white border-t border-gray-200 shadow-lg">
         <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto p-4">
           <div className="flex gap-2">
