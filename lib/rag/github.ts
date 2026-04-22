@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { RAG_CONFIG } from "./config";
 
-interface GitHubContentResponse {
+interface GitHubContentsResponse {
   content: string;
   encoding: string;
   name: string;
@@ -9,8 +9,8 @@ interface GitHubContentResponse {
 }
 
 /**
- * Fetcha il file AI_LOG.md da una repo GitHub via API.
- * Ritorna il contenuto decodificato o null se il file non esiste (404).
+ * Fetches AI_LOG.md from a GitHub repo via the Contents API.
+ * Returns the decoded markdown string, or null if the file does not exist.
  */
 export async function fetchAILog(
   owner: string,
@@ -18,18 +18,21 @@ export async function fetchAILog(
   branch: string
 ): Promise<string | null> {
   const token = process.env.GITHUB_TOKEN;
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${RAG_CONFIG.aiLogPath}?ref=${branch}`;
-
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-  };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  if (!token) {
+    throw new Error(
+      "GITHUB_TOKEN is not set. Add it to your environment variables."
+    );
   }
 
-  const response = await fetch(url, { headers });
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${RAG_CONFIG.aiLogPath}?ref=${branch}`;
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
 
   if (response.status === 404) {
     return null;
@@ -41,19 +44,19 @@ export async function fetchAILog(
     );
   }
 
-  const data = (await response.json()) as GitHubContentResponse;
+  const json = (await response.json()) as GitHubContentsResponse;
 
-  if (data.encoding !== "base64") {
+  if (json.encoding !== "base64") {
     throw new Error(
-      `Unexpected encoding "${data.encoding}" for ${owner}/${repo}/AI_LOG.md`
+      `Unexpected encoding "${json.encoding}" for ${owner}/${repo}/${RAG_CONFIG.aiLogPath}`
     );
   }
 
-  const decoded = Buffer.from(data.content, "base64").toString("utf-8");
+  const decoded = Buffer.from(json.content, "base64").toString("utf-8");
 
   console.log(
     chalk.green(
-      `✅ Fetched AI_LOG from ${owner}/${repo} (${decoded.length} chars)`
+      `✓ Fetched AI_LOG from ${owner}/${repo} (${decoded.length} chars)`
     )
   );
 
