@@ -6,13 +6,13 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 
 ## Overview del progetto
 
-**Soli Prof**: app **Next.js 16** + **React 19** con chat tutor in italiano, streaming SSE da **`/api/chat`**, client **Anthropic** (`@anthropic-ai/sdk`), system prompt in `lib/prompts.ts`, UI con **@soli92/solids**. Documentazione di learning (`WEEKLY_LOG.md`, `SETUP_GUIDE.md`) e CI GitHub Actions verso Vercel.
+**Soli Prof**: app **Next.js 16** + **React 19** con chat tutor in italiano, streaming SSE da **`/api/chat`**, client **Anthropic** (`@anthropic-ai/sdk`), system prompt in `lib/prompts.ts` e variante **RAG** (`getRAGSystemPrompt`), UI con **@soli92/solids**. **RAG** su **Supabase + pgvector**: ingest da GitHub (Contents API) degli `AI_LOG.md` dei repo configurati, chunking markdown, embedding **Voyage AI** (HTTP), script CLI `npm run rag:ingest` → `scripts/rag-ingest.ts`, SQL `sql/001_pgvector_setup.sql`. Documentazione (`WEEKLY_LOG.md`, `SETUP_GUIDE.md`) e CI verso Vercel.
 
-**Stack AI usato (inferito; aggiornato 2026-04-22)**: **Cursor / assistente LLM** per scaffold e doc — doppia onda `chore:`/`feat:`/`config:` e commit `2636626` / `36632b2` (*scaffolding batch*). In runtime il tutor usa **Anthropic** (`@anthropic-ai/sdk` in `package.json`, client in `lib/anthropic.ts`). System prompt versionato in `lib/prompts.ts` (`SYSTEM_PROMPT`). Presenti `AGENTS.md`, CI `.github/workflows`. *Modello IDE esatto non desumibile.*
+**Stack AI usato (inferito; aggiornato 2026-04-22)**: **Cursor / assistente LLM** per scaffold, doc e implementazione RAG (serie `feat(rag):` con Step A ripetuti poi consolidati). Runtime tutor: **Anthropic** + contesto recuperato (`lib/rag/retrieve.ts`, `topK=15` in `9ba4c05`). Embeddings: **Voyage** (`VOYAGE_API_KEY`, `lib/rag/embedder.ts`). Vector store: **Supabase** + **pgvector** (`@supabase/supabase-js`, RPC/search in `lib/rag/store.ts`). *Modello IDE esatto non desumibile.*
 
-**Periodo di sviluppo**: 2026-04-22 (`0006c8d` Initial commit alle 11:29) → 2026-04-22 (`2636626` fix scaffolding alle 13:18) — **meno di un giorno** di wall-clock per 59 commit (indicativo di sessione intensiva o rewrite history).
+**Periodo di sviluppo**: 2026-04-22 (`0006c8d` Initial commit) → 2026-04-22 (`9ba4c05` feat(rag): attiva retrieval con topK=15 + prompt rinforzato).
 
-**Numero di commit**: 59
+**Numero di commit**: 85
 
 ---
 
@@ -95,14 +95,42 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 - Dipendenze usate solo a runtime API route devono comparire in **`dependencies`**, non solo come trasitive (`baacbc4`).
 - Ripetere lo stesso messaggio di commit su molti file è sintomo di **replace meccanico**: un unico commit multi-file sarebbe più leggibile in history.
 
+### Fase 4 — RAG: pgvector, ingest AI_LOG da GitHub, Voyage, retrieve in chat
+
+**Timeframe**: da `edace82` / `0ef1c25` (*feat(rag): add RAG config — Step A*) fino a `9ba4c05` (retrieval attivo + prompt rinforzato).
+
+**Cosa è stato fatto**: modulo `lib/rag/` (`config`, `chunker`, `embedder` Voyage, `github` fetch AI_LOG via API Contents, `ingest` orchestrazione fetch/chunk/embed/upsert, `store` Supabase, `retrieve` query embedding + contesto formattato); `sql/001_pgvector_setup.sql` (tabella, indici, trigger, RPC, RLS); CLI `scripts/rag-ingest.ts` e script `rag:ingest`; integrazione in `app/api/chat/route.ts` con `retrieveContext` e **`getRAGSystemPrompt`**; fallback silenzioso se retrieval fallisce; fix ingest env `91dbb86`.
+
+**Evidenza di AI-assist** (inferita):
+
+- Ondata di commit **Step A** ripetuti/paralleli (`88638a9`, `64fa450`, …) poi integrazione in `route.ts` (`2001d4a`, `9ba4c05`) — tipico iterazione assistita su pipeline multi-file.
+
+**Decisioni architetturali notevoli**:
+
+- **Contesto RAG trattato come autoritativo** nel system prompt (`lib/prompts.ts` — regole obbligatorie su citazioni, commit hash, gap espliciti).
+- **Runtime `nodejs`** e `maxDuration` 60 in API chat (file `route.ts`) per embedding/HTTP e streaming combinati.
+- **topK=15** per il retrieve (`9ba4c05`).
+
+**Prompt chiave usati**
+
+> **Prompt [inferito]**: "Implementa RAG: schema pgvector su Supabase, ingest degli AI_LOG da GitHub, embedding Voyage, retrieve nella POST /api/chat con prompt che impone citazione repo e hash commit."
+> *Evidenza*: `da89e9b`, `862e8df`, `21f76fc`, `2001d4a`, `9ba4c05`, `getRAGSystemPrompt` in `lib/prompts.ts`.
+
+**Lezioni apprese**
+
+- **Fallback silenzioso** su retrieval evita 500 in chat se vector store o env sono momentaneamente assenti (`route.ts` try/catch).
+- Script ingest deve caricare **`.env.local`** in modo coerente con `dotenv`/`tsx` (`91dbb86 fix(rag-ingest)`).
+- Ripetere molti commit “Step A” con messaggio simile appesantisce la history — squash o piano unico riduce rumore.
+
 ---
 
 ## Pattern ricorrenti identificati
 
-- **Conventional commits** (`feat:`, `fix:`, `config:`, `docs:`, `chore:`).
+- **Conventional commits** (`feat:`, `fix:`, `config:`, `docs:`, `chore:`), scope **`(rag)`** per la pipeline RAG.
 - **Doppio binario documentazione**: README narrativo + `SETUP_GUIDE` operativo + `AGENTS` per agenti.
 - **Correzione post-scaffold** esplicita nei messaggi (`scaffolding batch`).
 - **Allineamento toolchain**: Node 22 (`.nvmrc` / `engines`).
+- **RAG come estensione del tutor**: stesso endpoint chat, contesto opzionale ma governato da prompt dedicato.
 
 ---
 
@@ -112,7 +140,12 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 - **Styling**: Tailwind + preset `@soli92/solids`
 - **State**: componente chat client-side (streaming)
 - **Deploy**: Vercel (homepage nel `package.json` e workflow CI)
-- **LLM integration**: Anthropic SDK, SSE in API route, system prompt dedicato
+- **LLM integration**: Anthropic SDK, SSE in API route, `SYSTEM_PROMPT` + **`getRAGSystemPrompt`**
+- **RAG / dati**: Supabase (pgvector), `@supabase/supabase-js`, SQL in `sql/001_pgvector_setup.sql`
+- **Embeddings**: Voyage AI API (`lib/rag/embedder.ts`, `VOYAGE_API_KEY` in `.env.example`)
+- **Ingest**: GitHub Contents API (`lib/rag/github.ts`), CLI `tsx scripts/rag-ingest.ts` (`npm run rag:ingest`)
+
+---
 
 ## Problemi tecnici risolti (inferiti)
 
@@ -120,13 +153,28 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 2. **Opzione Next deprecata**: `0dd5060 fix(next): remove deprecated swcMinify option`.
 3. **Refactor incompleti dopo scaffold**: `36632b2`, `2636626`.
 4. **Documentazione/registry npm vs GitHub Packages**: serie di commit `fix: rimuovi NPM_TOKEN…` / `.npmrc` (allineamento a pacchetto pubblico).
+5. **Ingest CLI e variabili env**: `91dbb86 fix(rag-ingest): fixed import for env.local variable retrieving`.
+6. **Retrieval non collegato al flusso chat**: risolto con `2001d4a` / `9ba4c05` (integrazione `retrieveContext` + `getRAGSystemPrompt`).
 
 ---
 
 ## Appendice — Commit notevoli (estratto da `git log --oneline`)
 
-La history del 2026-04-22 mostra **due ondate** di file simili (`chore:`/`feat:`/`config:`) e una lunga serie di fix su documentazione/npm; segue estratto HEAD→radice.
+Estratto HEAD→radice (in cima i più recenti): prima blocco **RAG**, poi scaffold/fix iniziali.
 
+- `9ba4c05` feat(rag): attiva retrieval con topK=15 + prompt rinforzato
+- `2001d4a` feat(rag): integra retrieveContext nel route.ts con fallback silenzioso
+- `91dbb86` fix(rag-ingest): fixed import for env.local variable retrieving
+- `88d8f00` / `7857c22` / `d0c96c9` feat(rag): aggiungi deps, env vars e prompt RAG
+- `da89e9b` feat(rag): add sql/001_pgvector_setup.sql with table, indexes, trigger, RPC and RLS
+- `47e6b02` feat(rag): add scripts/rag-ingest.ts CLI entry point
+- `21f76fc` feat(rag): add retrieve.ts with query embedding and formatted context output
+- `d24d71d` feat(rag): add ingest.ts orchestrator with fetch/chunk/embed/upsert pipeline
+- `862e8df` feat(rag): add github.ts with AI_LOG.md fetcher via GitHub Contents API
+- `188a383` feat(rag): add store.ts with Supabase upsertChunks and searchSimilar
+- `620d8b9` feat(rag): add embedder.ts with Voyage AI wrapper and batching
+- `30632aa` feat(rag): add chunker.ts with h2/h3 split and paragraph overflow handling
+- `0ef1c25` feat(rag): add config.ts with repo list and global constants
 - `2636626` fix: apply missing refactors from scaffolding batch
 - `36632b2` fix: apply missing refactors from scaffolding
 - `0dd5060` fix(next): remove deprecated swcMinify option
@@ -147,31 +195,32 @@ La history del 2026-04-22 mostra **due ondate** di file simili (`chore:`/`feat:`
 
 ## Punti aperti / note per il futuro
 
-- **Roadmap README / WEEKLY_LOG**: settimane 2+ (RAG, eval, fine-tuning) descritte come piani — implementazione non tracciata in questo log come codice completato.
-- **grep `TODO|FIXME|HACK|XXX`** in `app/`, `lib/`, `components/` (esclusi artifact): **nessun match** al momento dell’analisi.
-- **Costi Anthropic**: da monitorare in produzione (nessun rate cap nel repo analizzato in questa passata).
-- **Debito tecnico inferito**: history compressa in poche ore con 59 commit — conviene **squash** o policy commit prima di onboarding esterni.
-- **Debito tecnico inferito**: streaming e error handling API da stress-testare con limiti token reali (non coperti da grep statico).
-- **Debito tecnico inferito**: allineamento versione `AI_LOG.md` vs `WEEKLY_LOG.md` quando cambia lo stack (evitare drift narrativo).
+- **Roadmap README / WEEKLY_LOG**: aggiornare log settimanali e README per descrivere **RAG operativo** (prima erano solo piani).
+- **grep `TODO|FIXME|HACK|XXX`** in `app/`, `lib/`, `components/`, `lib/rag/`: **nessun match** prioritario nell’ultima passata.
+- **Costi**: Anthropic + **Voyage** + traffico **Supabase** / GitHub API ingest — nessun budget cap o quota monitoring nel codice analizzato.
+- **Ingest**: frequenza aggiornamento indice (cron vs manuale), secret `GITHUB_TOKEN` / permessi repo, limiti rate GitHub Contents API.
+- **Debito tecnico inferito**: estensione `pgvector` e RLS su progetto Supabase devono restare allineate a `sql/001_pgvector_setup.sql` (migrazioni manuali vs file in repo).
+- **Debito tecnico inferito**: `topK` e soglia similarità / filtri per repo — tuning solo in commit `9ba4c05`, da validare su query reali.
+- **Debito tecnico inferito**: history ancora densa (85 commit in un giorno) — valutare squash prima di release “pubblica” narrativa.
 
 ---
 
-> **Nota metodologica**: integrazione automatica 2026-04-22; le parti *[inferito]* vanno validate dal maintainer, in particolare i prompt ricostruiti senza transcript.
+> **Nota metodologica**: ultimo aggiornamento manuale **2026-04-22** (post-RAG); le parti *[inferito]* vanno validate dal maintainer.
 
 ---
 
 ## Metodologia compilazione automatica
 
-Completamento autonomo il **22 aprile 2026** su:
+Ultimo aggiornamento contenuti **2026-04-22** (allineato a `9ba4c05`), analizzando:
 
-- **59** commit in `git log` (stesso giorno per gran parte della history)
-- **~10** file di contesto (`package.json`, `next.config.ts`, `lib/prompts.ts`, `lib/anthropic.ts`, `AGENTS.md`, `.github/workflows/*`, `README.md`, `SETUP_GUIDE.md`, `WEEKLY_LOG.md`)
-- **0** occorrenze `TODO|FIXME|HACK|XXX` nei path sorgente ispezionati
+- **85** commit in `git log` su `main`
+- **~18** file/aree di contesto (`package.json`, `next.config.ts`, `app/api/chat/route.ts`, `lib/prompts.ts`, `lib/anthropic.ts`, `lib/rag/*`, `scripts/rag-ingest.ts`, `sql/001_pgvector_setup.sql`, `.env.example`, `AGENTS.md`, workflow CI, README/SETUP/WEEKLY_LOG)
+- **0** occorrenze `TODO|FIXME|HACK|XXX` nei path sorgente campionati
 
 **Punti di minore confidenza:**
 
-- Ricostruzione prompt fase 1 senza log Cursor.
-- Ipotesi “due passate” di scaffold: dedotta da duplicazione messaggi, non da evidenza diretta.
-- Copertura grep limitata ai file presenti nel workspace aperti dall’agente.
+- Prompt testuali fase RAG ricostruiti senza transcript sessione.
+- Dettaglio RLS/policies Supabase in produzione vs file SQL in repo.
+- Copertura test automatici su pipeline RAG (non evidenziata nei commit).
 
 ---
