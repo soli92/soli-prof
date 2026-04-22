@@ -26,7 +26,7 @@ Un **AI tutor personale** che risponde a domande di apprendimento con risposte:
 - **Visibility**: Pubblica
 - **Branch principale**: `main`
 - **URL**: https://github.com/soli92/soli-prof
-- **Docs**: README.md, WEEKLY_LOG.md, questo file
+- **Docs**: README.md, WEEKLY_LOG.md, AI_LOG.md (memoria sviluppo AI-assisted), questo file
 
 ---
 
