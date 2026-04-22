@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, DEFAULT_MODEL } from "@/lib/anthropic";
-import { getSystemPrompt } from "@/lib/prompts";
+import { getRAGSystemPrompt } from "@/lib/prompts";
+import { retrieveContext } from "@/lib/rag/retrieve";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -36,6 +37,16 @@ export async function POST(request: NextRequest) {
       },
     ];
 
+    // RAG: retrieval contesto dagli AI_LOG indicizzati
+    // Fallback silenzioso: se il retrieval fallisce, il tutor risponde senza contesto
+    let retrievedContext = "";
+    try {
+      retrievedContext = await retrieveContext(body.userMessage, 5);
+      console.log(`[RAG] Retrieved ${retrievedContext.length} chars of context`);
+    } catch (err) {
+      console.error("[RAG] Retrieval failed, continuing without context:", err);
+    }
+
     // Streaming response con SSE
     const encoder = new TextEncoder();
     let buffer = "";
@@ -46,7 +57,7 @@ export async function POST(request: NextRequest) {
           const response = await anthropic.messages.create({
             model: DEFAULT_MODEL,
             max_tokens: 1024,
-            system: getSystemPrompt(),
+            system: getRAGSystemPrompt(retrievedContext),
             messages: conversationMessages,
             stream: true,
           });
