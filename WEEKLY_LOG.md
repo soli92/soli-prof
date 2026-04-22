@@ -1,42 +1,96 @@
-# Soli Prof — Weekly Log
+# 📖 Weekly Learning Log — Soli Prof
 
-Documentazione settimanale dello sviluppo di Soli Prof in pubblico.
+Documentazione settimanale del percorso di apprendimento AI engineering.
 
-## Settimana 1: Setup Iniziale e Primo Scaffold
+---
 
-**Data**: Aprile 2026
+## Settimana 1: Setup iniziale e primo scaffold (22 Aprile 2024)
 
-### Completato ✅
-- [x] Scaffold progetto Next.js 16 con TypeScript
-- [x] Integrazione design system @soli92/solids (GitHub Packages)
-- [x] Configurazione Tailwind CSS con preset SoliDS
-- [x] Struttura cartelle per estensione futura (lib/, components/)
-- [x] Chat API route con streaming Anthropic Claude Haiku 4.5
-- [x] Componente ChatView con SSE streaming
-- [x] Setup environment variables e .npmrc per GitHub Packages
-- [x] Deploy pronto per Vercel
+### 🎯 Obiettivi
+- ✅ Creare il progetto Next.js 16 con TypeScript
+- ✅ Integrare il design system `@soli92/solids`
+- ✅ Implementare un'interfaccia chat semplice ma pulita
+- ✅ Collegare Claude Haiku 3.5 con streaming SSE
+- ✅ Deploy automatico su Vercel con GitHub Actions
 
-### In Progress 🔄
-- [ ] Integrazione test suite (tester sub-agent)
-- [ ] GitHub Actions CI/CD básico
-- [ ] Collegamento a Vercel
+### 📝 Cosa è stato fatto
 
-### To Do 📋
-- [ ] Aggiungere memoria conversazionale persistente (Redis/Supabase)
-- [ ] Tool use: ricerca web, esecuzione code sandbox
-- [ ] RAG per documentazione AI engineering
-- [ ] Tema scuro/chiaro con next-themes
-- [ ] Mobile responsive improvements
-- [ ] Analytics e tracking utilizzo
-- [ ] Blog per documentare processo di apprendimento
+#### Infrastruttura
+- Repository GitHub `soli92/soli-prof` creata e pubblica
+- Stack scelto: Next.js 16 + React 19 + TypeScript
+- Tailwind CSS con preset `@soli92/solids` (design system privato su GitHub Packages)
+- Configurazione `.npmrc` per accesso a `@soli92/solids`
 
-### Note Tecniche
-- Stack: Next.js 16, TypeScript, Tailwind + SoliDS, Anthropic SDK
-- Model: Claude Haiku 4.5 (economico per iterazioni rapide)
-- Chat: streaming SSE lato client React, niente persistenza locale ancora
-- Design: minimale, focus su funzionalità core
+#### Frontend
+- Componente `ChatView` — interfaccia chat con:
+  - Input campo per domande
+  - Scroll automatico ai nuovi messaggi
+  - Loading indicator animato
+  - Gestione errori di API
+- Componente `MessageBubble` — visualizzazione messaggi user/assistant
+- Stili Tailwind CSS allineati ai token SoliDS (`--sd-color-*`, `--sd-space-*`)
 
-### Link Utili
-- Repo: https://github.com/soli92/soli-prof
-- Live Demo: (da deployare su Vercel)
-- Design System: https://github.com/soli92/solids
+#### Backend
+- API route `POST /api/chat` con streaming SSE
+  - Integrazione Anthropic Claude Haiku 3.5
+  - System prompt ottimizzato per tutor personale
+  - Timeout 60 secondi
+  - Manejo errori con messaggi chiari
+
+#### Sistema prompt
+- System prompt pensato per:
+  - Risposte in italiano, sempre
+  - Brevità e concretezza (no teoria astratta)
+  - Esempi pratici di codice
+  - Tono supportivo senza condiscendenza
+  - Specializzazione: AI engineering, frontend avanzato, DevOps
+
+#### Documentazione
+- README completo con:
+  - Spiegazione del perché del progetto
+  - Setup passo-passo (incluso NPM_TOKEN per GitHub Packages)
+  - Istruzioni deploy Vercel
+  - Stack tecnico
+- `.env.example` con commenti per ogni variabile
+- WEEKLY_LOG per documentare il progresso
+
+#### DevOps / CI-CD
+- GitHub Actions workflow per:
+  - Build e type-check su ogni push
+  - Deploy automatico su Vercel per branch `main`
+
+### 🔍 Learning takeaways
+
+1. **Streaming SSE in Next.js** → ReadableStream + encoder per risposta real-time
+2. **Anthropic SDK** → Modelli, timeout, cost-optimization con Haiku
+3. **Design system riusabile** → Integrare preset Tailwind + CSS variables
+4. **GitHub Packages** → Setup NPM auth con PAT per dipendenze private
+5. **System prompt engineering** → Come guidare l'LLM per specifico ruolo
+
+### 🐛 Problemi incontrati e soluzioni
+
+| Problema | Soluzione |
+|----------|-----------|
+| `@soli92/solids` non installabile senza auth | Configurare `.npmrc` con `NPM_TOKEN` e GitHub Packages registry |
+| Streaming SSE incompleto nel client | Leggere intero stream con `while (true)` fino a `done: true` |
+| Scroll non fluido in chat mobile | Usare `scrollIntoView({ behavior: 'smooth' })` con ref |
+
+### 📚 Prossimo step
+- **Settimana 2**: Prompt engineering avanzato
+  - Zero-shot vs few-shot prompting
+  - Chain-of-thought prompts
+  - Valutazione della qualità delle risposte
+
+---
+
+## Settimana 2: [TBD]
+Spazio per prossime scoperte...
+
+---
+
+## Note generali
+
+- **Editor**: VS Code + Cursor per agenti AI
+- **Linguaggio apprendimento**: Italiano (per coherenza con tutor)
+- **Versioning**: Semantic versioning su release (vedi GitHub Releases)
+- **Feedback**: Ogni settimana aggiorna questo file e il README con nuove scoperte
