@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     // Fallback silenzioso: se il retrieval fallisce, il tutor risponde senza contesto
     let retrievedContext = "";
     try {
-      retrievedContext = await retrieveContext(body.userMessage, 5);
+      retrievedContext = await retrieveContext(body.userMessage, 15);
       console.log(`[RAG] Retrieved ${retrievedContext.length} chars of context`);
     } catch (err) {
       console.error("[RAG] Retrieval failed, continuing without context:", err);

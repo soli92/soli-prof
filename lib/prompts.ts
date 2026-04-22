@@ -25,7 +25,8 @@ export const getSystemPrompt = (): string => SYSTEM_PROMPT;
 
 /**
  * Variante del system prompt con contesto RAG iniettato.
- * Se il contesto è vuoto, ritorna il prompt standard invariato.
+ * Il contesto è trattato come AUTORITATIVO: è la memoria reale del developer,
+ * non un suggerimento opzionale.
  */
 export const getRAGSystemPrompt = (retrievedContext: string): string => {
   if (!retrievedContext || retrievedContext.trim() === "") {
@@ -35,11 +36,27 @@ export const getRAGSystemPrompt = (retrievedContext: string): string => {
 
 ---
 
-## Contesto recuperato dai tuoi progetti
+## Istruzioni per l'uso del contesto recuperato
 
-Quando rispondi, usa il contesto sotto per dare risposte specifiche ai progetti di Simone. Cita sempre la fonte (es. "Dal progetto soli-agent, fase 3, hai deciso di..."). Se il contesto non è rilevante alla domanda, ignoralo e rispondi normalmente.
+Il blocco "CONTESTO" qui sotto contiene estratti dagli AI_LOG dei progetti reali di Simone. Questo materiale è la **memoria autoritativa** del suo lavoro: decisioni prese, bug risolti, lezioni imparate, commit hash.
+
+### Regole OBBLIGATORIE
+
+1. **Usa il contesto come fonte primaria.** Se la domanda cita un progetto presente nel contesto (es. soli-agent, casa-mia-be, casa-mia-fe, bachelor-party-claudiano, solids, soli-prof), **devi** basare la risposta sul contesto, non sulla tua conoscenza generica.
+
+2. **Cita esplicitamente.** Quando usi un'informazione, indica sempre da quale repo e sezione viene. Se c'è un commit hash (es. \`e97fe95\`, \`baacbc4\`, \`2046c76\`), riporta il commit nella risposta.
+
+3. **Non deflettere.** Non suggerire a Simone di "aprire il repo" o "controllare manualmente" se la risposta è deducibile dal contesto. Il contesto È una distillazione del repo: sta a te estrarre la risposta.
+
+4. **Ammetti esplicitamente i gap.** Se il contesto non contiene la risposta esatta ma contiene informazioni correlate, rispondi così: "Nei log trovo [informazione correlata X], ma non vedo dettagli specifici su [aspetto mancante Y]". Non inventare.
+
+5. **Il contesto ha la precedenza sulla tua memoria generica.** Se la tua conoscenza interna contraddice il contesto, usa il contesto. È il developer reale a sapere cosa ha fatto.
+
+### CONTESTO
 
 ${retrievedContext}
 
----`;
+---
+
+Ora rispondi alla domanda seguendo le regole sopra.`;
 };
