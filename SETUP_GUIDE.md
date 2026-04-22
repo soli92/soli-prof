@@ -11,7 +11,7 @@ Guida passo-passo per clonare, configurare e deployare **Soli Prof** in locale e
 
 ---
 
-## 1️⃣ Preparazione: chiavi API
+## 1️⃣ Preparazione: Chiavi API
 
 ### Anthropic API Key
 
@@ -40,7 +40,7 @@ cd soli-prof
 
 ## 3️⃣ Installa dipendenze
 
-`@soli92/solids` è un pacchetto **pubblico su npm** — nessun token necessario.
+`@soli92/solids` è un pacchetto **pubblico su npm**: nessun token necessario.
 
 ```bash
 npm install
@@ -58,7 +58,7 @@ cp .env.example .env.local
 Apri `.env.local` e aggiungi:
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-your_actual_key_here
+ANTHROPIC_API_KEY=sk-ant-your_actual_key_here_no_quotes
 ```
 
 ---
@@ -244,4 +244,4 @@ Se tutti i punti sono ✅, sei pronto a:
 
 ---
 
-**Ultimo aggiornamento**: 22 Aprile 2024
+**Ultimo aggiornamento**: Maggio 2025
