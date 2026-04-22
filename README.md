@@ -25,7 +25,6 @@ Chiunque può usare lo stesso setup per avere il proprio tutor personale.
 
 - **Node.js 22+** (verifica con `node --version`)
 - **npm 10+** (verifica con `npm --version`)
-- Un token GitHub con scope `read:packages` (per accesso a `@soli92/solids`)
 
 ### 2. Clona il repo
 
@@ -34,21 +33,13 @@ git clone https://github.com/soli92/soli-prof
 cd soli-prof
 ```
 
-### 3. Configura NPM_TOKEN per GitHub Packages
+### 3. Installa le dipendenze
 
-Prima di installare le dipendenze, esporta il tuo token GitHub:
+`@soli92/solids` è un pacchetto **pubblico su npm** — nessun token necessario.
 
 ```bash
-export NPM_TOKEN=ghp_your_personal_access_token_here
 npm install
 ```
-
-**Come generare il token:**
-1. Vai su [GitHub → Settings → Developer Settings → Personal Access Tokens → Tokens (classic)](https://github.com/settings/tokens)
-2. Crea un nuovo token con scope **`read:packages`**
-3. Copia il valore e usalo come `NPM_TOKEN`
-
-Riferimento: [GitHub Packages docs](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry)
 
 ### 4. Configura le variabili d'ambiente
 
@@ -56,11 +47,10 @@ Riferimento: [GitHub Packages docs](https://docs.github.com/en/packages/working-
 cp .env.example .env.local
 ```
 
-Compila `.env.local`:
+Apri `.env.local` e compila:
 
 ```env
 ANTHROPIC_API_KEY=sk-ant-your-key-here
-NPM_TOKEN=ghp_your-token-here  # (opzionale se già esportato)
 ```
 
 **Come ottenere `ANTHROPIC_API_KEY`:**
@@ -167,7 +157,6 @@ Il repo è pronto per il deploy automatico su Vercel.
 3. Seleziona il repo `soli-prof`
 4. Aggiungi le variabili d'ambiente nel dashboard:
    - `ANTHROPIC_API_KEY`
-   - `NPM_TOKEN` (se privato)
 5. Deploy automatico su ogni push a `main`
 
 ### Opzione 2: Deploy da CLI
