@@ -35,7 +35,7 @@ cd soli-prof
 
 ### 3. Installa le dipendenze
 
-`@soli92/solids` è un pacchetto **pubblico su npm** — nessun token necessario.
+`@soli92/solids` è un pacchetto **pubblico su npm**: nessun token necessario.
 
 ```bash
 npm install
@@ -47,7 +47,7 @@ npm install
 cp .env.example .env.local
 ```
 
-Apri `.env.local` e compila:
+Compila `.env.local`:
 
 ```env
 ANTHROPIC_API_KEY=sk-ant-your-key-here
