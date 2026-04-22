@@ -52,7 +52,7 @@ soli-prof/
 │   └── workflows/
 │       └── deploy.yml             # GitHub Actions → Vercel (auto)
 ├── .env.example                   # Variabili d'ambiente template
-├── .npmrc                         # NPM config (GitHub Packages auth)
+├── .npmrc                         # NPM config (registry npmjs.org)
 ├── .nvmrc                         # Node.js version (22)
 ├── package.json                   # Dipendenze, script
 ├── tsconfig.json                  # TypeScript config
@@ -193,7 +193,6 @@ Possibile creare funzione `getSystemPrompt(specialization?: string)` per adattar
 
 ### Richieste (produzione)
 - `ANTHROPIC_API_KEY` — Chiave API da [console.anthropic.com](https://console.anthropic.com)
-- `NPM_TOKEN` — GitHub PAT con scope `read:packages` (se installi `@soli92/solids`)
 
 ### Opzionali (dev)
 - `VERCEL_TOKEN` — Per deploy da CLI (raramente usato)
@@ -201,9 +200,6 @@ Possibile creare funzione `getSystemPrompt(specialization?: string)` per adattar
 ### Setup locale
 
 ```bash
-# Esporta token prima di npm install
-export NPM_TOKEN=ghp_your_token
-
 npm install
 cp .env.example .env.local
 # Scrivi ANTHROPIC_API_KEY in .env.local
@@ -216,7 +212,6 @@ npm run dev
 1. Vai a [vercel.com](https://vercel.com) → Project Settings
 2. Environment Variables:
    - `ANTHROPIC_API_KEY` — (tutti gli ambienti)
-   - `NPM_TOKEN` — se privato (tutti gli ambienti)
 3. Deploy automatico su `main` push
 
 ---
@@ -331,7 +326,7 @@ npm run test:e2e     # Playwright
 3. NPM install
 4. Type-check (`tsc --noEmit`)
 5. Build (`next build`)
-6. Deploy Vercel (con `VERCEL_TOKEN` + `ANTHROPIC_API_KEY` + `NPM_TOKEN` come secrets)
+6. Deploy Vercel (con `VERCEL_TOKEN` + `ANTHROPIC_API_KEY` come secrets)
 
 ### Secrets da aggiungere
 
@@ -341,7 +336,6 @@ Vai a **repo → Settings → Secrets and variables → Actions**:
 |--------|--------|
 | `VERCEL_TOKEN` | Token da [Vercel → Settings → Tokens](https://vercel.com/account/tokens) |
 | `ANTHROPIC_API_KEY` | Chiave API Anthropic |
-| `NPM_TOKEN` | GitHub PAT con `read:packages` |
 
 ---
 
@@ -408,7 +402,6 @@ npm run build
 - **Next.js Docs**: https://nextjs.org/docs
 - **Tailwind Docs**: https://tailwindcss.com/docs
 - **SoliDS Storybook**: https://soli92.github.io/solids/
-- **GitHub Packages**: https://docs.github.com/en/packages
 
 ---
 
