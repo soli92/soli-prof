@@ -1,98 +1,102 @@
-/**
- * Chat API Route
- * Handles streaming chat requests to Anthropic Claude
- */
-
-import { createAnthropicClient, MODEL } from "@/lib/anthropic";
-import { SYSTEM_PROMPT } from "@/lib/prompts";
+import { NextRequest, NextResponse } from "next/server";
+import { anthropic, DEFAULT_MODEL } from "@/lib/anthropic";
+import { getSystemPrompt } from "@/lib/prompts";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
-interface Message {
+interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
 
-interface RequestBody {
-  messages: Message[];
+interface ChatRequest {
+  messages: ChatMessage[];
+  userMessage: string;
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body: RequestBody = await request.json();
-    const messages = body.messages;
+    const body: ChatRequest = await request.json();
 
-    if (!messages || messages.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "No messages provided" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+    // Validazione input
+    if (!body.userMessage || typeof body.userMessage !== "string") {
+      return NextResponse.json(
+        { error: "userMessage è richiesto" },
+        { status: 400 }
       );
     }
 
-    const client = createAnthropicClient();
+    // Preparazione messaggi per Claude
+    const conversationMessages: ChatMessage[] = [
+      ...(body.messages || []),
+      {
+        role: "user",
+        content: body.userMessage,
+      },
+    ];
 
-    // Convert messages to Anthropic format
-    const anthropicMessages = messages.map((msg) => ({
-      role: msg.role as "user" | "assistant",
-      content: msg.content,
-    }));
-
-    // Create streaming response
-    const response = await client.messages.stream({
-      model: MODEL,
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: anthropicMessages,
-    });
-
-    // Create ReadableStream for SSE
+    // Streaming response con SSE
     const encoder = new TextEncoder();
     let buffer = "";
 
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of response) {
-            if (
-              chunk.type === "content_block_delta" &&
-              chunk.delta.type === "text_delta"
-            ) {
-              const text = chunk.delta.text;
-              buffer += text;
+          const response = await anthropic.messages.create({
+            model: DEFAULT_MODEL,
+            max_tokens: 1024,
+            system: getSystemPrompt(),
+            messages: conversationMessages,
+            stream: true,
+          });
 
-              // Send SSE event
-              const data = JSON.stringify({
-                content: text,
-              });
-              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          for await (const event of response) {
+            if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "text_delta"
+            ) {
+              buffer += event.delta.text;
+              // Invia chunk di testo
+              controller.enqueue(
+                encoder.encode(event.delta.text)
+              );
             }
           }
 
-          // Send completion signal
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          // Invia segnale fine stream
+          controller.enqueue(
+            encoder.encode("\n[DONE]")
+          );
           controller.close();
         } catch (error) {
-          controller.error(error);
+          const errorMessage =
+            error instanceof Error ? error.message : "Errore sconosciuto";
+          controller.enqueue(
+            encoder.encode(`\n[ERROR]: ${errorMessage}`)
+          );
+          controller.close();
         }
       },
     });
 
-    return new Response(stream, {
+    return new NextResponse(stream, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
-        "Access-Control-Allow-Origin": "*",
       },
     });
   } catch (error) {
     console.error("Chat API error:", error);
-    return new Response(
-      JSON.stringify({
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Errore interno del server",
+      },
+      { status: 500 }
     );
   }
 }
