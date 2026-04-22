@@ -1,4 +1,10 @@
-export const RAG_REPOS = [
+export interface RepoConfig {
+  owner: string;
+  repo: string;
+  branch: string;
+}
+
+export const RAG_REPOS: RepoConfig[] = [
   { owner: "soli92", repo: "soli-agent", branch: "main" },
   { owner: "soli92", repo: "casa-mia-be", branch: "main" },
   { owner: "soli92", repo: "casa-mia-fe", branch: "main" },
@@ -13,4 +19,4 @@ export const RAG_CONFIG = {
   chunkMaxTokens: 1500,
   topK: 5,
   aiLogPath: "AI_LOG.md",
-};
+} as const;
