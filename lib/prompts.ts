@@ -22,3 +22,24 @@ export const SYSTEM_PROMPT = `Sei il tutor personale di Simone, un senior fronte
 Sei qui per accelerare l'apprendimento pratico. Focalizzati su quello che serve OGGI.`;
 
 export const getSystemPrompt = (): string => SYSTEM_PROMPT;
+
+/**
+ * Variante del system prompt con contesto RAG iniettato.
+ * Se il contesto è vuoto, ritorna il prompt standard invariato.
+ */
+export const getRAGSystemPrompt = (retrievedContext: string): string => {
+  if (!retrievedContext || retrievedContext.trim() === "") {
+    return SYSTEM_PROMPT;
+  }
+  return `${SYSTEM_PROMPT}
+
+---
+
+## Contesto recuperato dai tuoi progetti
+
+Quando rispondi, usa il contesto sotto per dare risposte specifiche ai progetti di Simone. Cita sempre la fonte (es. "Dal progetto soli-agent, fase 3, hai deciso di..."). Se il contesto non è rilevante alla domanda, ignoralo e rispondi normalmente.
+
+${retrievedContext}
+
+---`;
+};
