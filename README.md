@@ -1,51 +1,56 @@
-# ⚡ Soli Prof
+# 🎓 Soli Prof
 
-**Il tuo tutor personale per imparare AI engineering in pubblico.**
+**Soli Prof** è il mio tutor personale AI per imparare **AI engineering in pubblico**.
 
-Soli Prof è un side-project di apprendimento AI engineering dove scopri, sperimenti e documenti il tuo percorso verso la padronanza dell'IA applicata allo sviluppo software. È costruito **completamente in pubblico** su GitHub: ogni settimana aggiungo feature, rifletto sui learnings e aggiorno la documentazione.
+Uno spazio dove documento il percorso di apprendimento: come funzionano i modelli LLM, prompt engineering, RAG, fine-tuning, valutazione dei risultati, e tutto ciò che serve per costruire applicazioni AI solide.
 
 ## Perché?
 
-Come senior frontend developer, il salto verso AI engineering è complesso: non è solo saper usare un'API, ma capire prompt design, gestione contesto, tool use, RAG, fine-tuning. Questo progetto serve come **laboratorio pubblico** e **riferimento** per altri che affrontano lo stesso percorso.
+Come senior frontend developer, voglio acquisire **expertise pratica** su AI engineering senza leggere solo teoria. Questo progetto è un learning journal pubblico dove costruisco, sperimento e documento le settimane di apprendimento.
+
+Chiunque può usare lo stesso setup per avere il proprio tutor personale.
 
 ## Stack
 
-| Layer | Tech |
-|-------|------|
-| **Framework** | Next.js 16, TypeScript, React |
-| **Styling** | Tailwind CSS + @soli92/solids (design system privato) |
-| **AI/LLM** | Anthropic Claude Haiku 4.5 (streaming SSE) |
-| **Deploy** | Vercel (web), future: Railway/Render per backend |
-| **Database** | (Roadmap: Supabase per persistenza conversazionale) |
+| Layer | Tecnologia |
+|-------|-----------|
+| **Frontend** | Next.js 16, React 19, TypeScript |
+| **UI** | Tailwind CSS + `@soli92/solids` (design system personale) |
+| **LLM** | Anthropic Claude Haiku 3.5 (streaming SSE) |
+| **Hosting** | Vercel |
 
-## Setup Locale
+## Setup locale
 
 ### 1. Prerequisiti
-- Node.js **22+** (vedi `.nvmrc`)
-- Token GitHub con scope `read:packages` per installare @soli92/solids da GitHub Packages
 
-### 2. Clone e Installa
+- **Node.js 22+** (verifica con `node --version`)
+- **npm 10+** (verifica con `npm --version`)
+- Un token GitHub con scope `read:packages` (per accesso a `@soli92/solids`)
+
+### 2. Clona il repo
 
 ```bash
 git clone https://github.com/soli92/soli-prof
 cd soli-prof
+```
 
-# Esporta NPM_TOKEN PRIMA di npm install
-export NPM_TOKEN="ghp_your_github_token_here"
+### 3. Configura NPM_TOKEN per GitHub Packages
 
+Prima di installare le dipendenze, esporta il tuo token GitHub:
+
+```bash
+export NPM_TOKEN=ghp_your_personal_access_token_here
 npm install
 ```
 
-**Come creare il GitHub token:**
-1. Vai a [github.com/settings/tokens](https://github.com/settings/tokens)
-2. Crea un **Personal Access Token (Fine-grained)**
-3. Seleziona solo lo scope **`read:packages`**
-4. Copia il token e salvalo in un posto sicuro
-5. Nel terminale: `export NPM_TOKEN="ghp_xxx"`
+**Come generare il token:**
+1. Vai su [GitHub → Settings → Developer Settings → Personal Access Tokens → Tokens (classic)](https://github.com/settings/tokens)
+2. Crea un nuovo token con scope **`read:packages`**
+3. Copia il valore e usalo come `NPM_TOKEN`
 
-Se npm install fallisce con 401 Unauthorized, il token non è impostato correttamente. Verifica che `NPM_TOKEN` sia visibile con `echo $NPM_TOKEN`.
+Riferimento: [GitHub Packages docs](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry)
 
-### 3. Configura le Variabili d'Ambiente
+### 4. Configura le variabili d'ambiente
 
 ```bash
 cp .env.example .env.local
@@ -54,115 +59,136 @@ cp .env.example .env.local
 Compila `.env.local`:
 
 ```env
-# Ottenere da https://console.anthropic.com
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Lo stesso token GitHub di cui sopra (opzionale in .env se già in shell)
-NPM_TOKEN=ghp_...
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+NPM_TOKEN=ghp_your-token-here  # (opzionale se già esportato)
 ```
 
-### 4. Avvia lo Sviluppo
+**Come ottenere `ANTHROPIC_API_KEY`:**
+- Vai su [console.anthropic.com](https://console.anthropic.com)
+- Settings → API Keys → Crea una nuova chiave
+- Copia il valore in `.env.local`
+
+### 5. Avvia il dev server
 
 ```bash
 npm run dev
 ```
 
-Apri [http://localhost:3000](http://localhost:3000) — il tutor è pronto a chattare!
+Apri [http://localhost:3000](http://localhost:3000) nel browser.
 
 ## Uso
 
-1. **Home Page** (`/`): Chat interface minimale
-2. **API Route** (`/api/chat`): Endpoint POST con streaming SSE
-   - Body: `{ messages: Array<{ role: "user" | "assistant", content: string }> }`
-   - Response: Server-Sent Events con chunk di testo (`data: {...}\n\n`)
+Scrivi nella chat e riceverai risposte dal tutor personale. Le risposte sono:
 
-### Esempio di Prompt
+- **Pratiche**: focus su codice e esempi reali, non teoria astratta
+- **Brevi**: niente risposte lunghe (chiedi di approfondire se serve)
+- **In italiano**: tono cordiale e supportivo
+- **Contestuali**: il tutor conosce il tuo background (senior frontend) e adatta la spiegazione
 
-```
-Come inizio a imparare il prompt design per LLM?
-```
+## Progetti e settimanali
 
-Il tutor risponderà in italiano, con risposte brevi, concrete e pratiche — evitando teoria astratta.
+### Stato attuale
 
-## Struttura del Progetto
+- **Settimana 1** ✅ — Setup iniziale, primo scaffold con Soli Agent, deploy su Vercel
+
+### Roadmap
+
+- **Settimana 2** → Prompt engineering: tecniche di base (zero-shot, few-shot, chain-of-thought)
+- **Settimana 3** → RAG: retrieval-augmented generation con embedding locali
+- **Settimana 4** → Fine-tuning: creare dataset e fine-tunare modelli piccoli
+- **Settimana 5** → Evaluazione: metriche per valutare output LLM
+
+Dettagli: vedi [WEEKLY_LOG.md](./WEEKLY_LOG.md).
+
+## Tecnologie principali
+
+### Next.js 16 + TypeScript
+
+- App Router (server/client components)
+- API routes (POST `/api/chat`)
+- Streaming SSE per risposta in tempo reale
+
+### Tailwind CSS + SoliDS
+
+- Design system allineato a token semantici (`--sd-color-*`, `--sd-space-*`, ecc.)
+- Tema light/dark automatico
+- Componenti riusabili
+
+### Anthropic Claude Haiku 3.5
+
+- Modello veloce, leggero, economico per tutor interattivo
+- Streaming per UX fluida
+- System prompt ottimizzato per insegnamento pratico
+
+## Architettura
 
 ```
 soli-prof/
 ├── app/
-│   ├── layout.tsx           # Root layout + metadati
-│   ├── page.tsx             # Home page
-│   ├── globals.css          # Global styles (SoliDS + Tailwind)
-│   └── api/
-│       └── chat/
-│           └── route.ts     # Streaming chat endpoint
+│   ├── api/chat/route.ts      # Endpoint POST con streaming
+│   ├── page.tsx               # Chat principale
+│   ├── layout.tsx             # Metadati e setup
+│   └── globals.css            # Stili globali
 ├── components/
-│   ├── chat-view.tsx        # Componente chat principale
-│   └── message-bubble.tsx   # Bubble singolo messaggio
+│   ├── chat-view.tsx          # Componente chat (state, input)
+│   └── message-bubble.tsx     # Bubble messaggi
 ├── lib/
-│   ├── anthropic.ts         # Client Anthropic helper
-│   └── prompts.ts           # System prompt e utility
-├── WEEKLY_LOG.md            # Documentazione settimanale
-├── package.json
-├── tsconfig.json
-├── tailwind.config.ts       # Config Tailwind con SoliDS preset
-├── .env.example
-└── .npmrc                   # Registry config per GitHub Packages
+│   ├── anthropic.ts           # Client Anthropic
+│   └── prompts.ts             # System prompt del tutor
+├── package.json               # Dependencies
+├── tailwind.config.ts         # Preset @soli92/solids
+└── tsconfig.json              # TypeScript config
 ```
 
-## Roadmap
-
-### Settimana 2-3
-- [ ] Test suite con Playwright
-- [ ] GitHub Actions: lint, type check, test su PR
-- [ ] Deploy automatico su Vercel
-
-### Settimana 4-6
-- [ ] Memoria conversazionale: Supabase + sessioni utente
-- [ ] Rich messages: markdown, code syntax highlighting
-- [ ] Theme selector (light/dark con next-themes)
-
-### Settimana 7+
-- [ ] Tool use: esecuzione sandbox code (`/api/sandbox`)
-- [ ] RAG: indexing docs personali (blog, notes)
-- [ ] Context window optimization
-- [ ] Analytics e metrics learnings
-- [ ] Blog pubblico per documentare insights settimanali
-
-## Comandi Principali
+## Sviluppo
 
 ```bash
-npm run dev           # Avvia dev server su :3000
-npm run build         # Build production
-npm run start         # Start production server
-npm run lint          # ESLint
-npm run type-check    # TypeScript check
+# Dev server
+npm run dev
+
+# Build
+npm run build
+
+# Type check
+npm run type-check
+
+# Lint
+npm run lint
 ```
 
-## Live Demo
+## Deploy su Vercel
 
-🚀 **Coming soon**: Vercel deployment  
-📚 **Blog**: (placeholder per futuri articoli)
+Il repo è pronto per il deploy automatico su Vercel.
 
-## Design System: @soli92/solids
+### Opzione 1: Connetti GitHub (consigliato)
 
-Questo progetto usa il **design system personale** `@soli92/solids` (GitHub Packages):
-- Token CSS variables (`--sd-color-*`, `--sd-space-*`, ecc.)
-- Preset Tailwind completamente allineato
-- Temi light/dark/custom disponibili
-- Documentazione: [github.com/soli92/solids](https://github.com/soli92/solids)
+1. Vai su [vercel.com](https://vercel.com)
+2. Connetti il tuo account GitHub
+3. Seleziona il repo `soli-prof`
+4. Aggiungi le variabili d'ambiente nel dashboard:
+   - `ANTHROPIC_API_KEY`
+   - `NPM_TOKEN` (se privato)
+5. Deploy automatico su ogni push a `main`
 
-## Contributi & Feedback
+### Opzione 2: Deploy da CLI
 
-Questo è un progetto personale pubblico. Se hai feedback, correzioni o idee:
-1. Apri una GitHub Issue
-2. Fai un fork e PR per piccole correzioni
-3. Contattami via GitHub Discussions (quando saranno attive)
+```bash
+npm i -g vercel
+vercel --prod
+```
 
-## License
+**URL live:** [soli-prof.vercel.app](https://soli-prof.vercel.app) (quando deployato)
+
+## Licenza
 
 MIT © [soli92](https://github.com/soli92)
 
 ---
 
-**Ultimo aggiornamento**: Settimana 1, Aprile 2026  
-**Prossimo update**: Weekly log + feature sprint
+## Note di sviluppo
+
+Questo progetto è costruito per imparare in pubblico. Il codice, le note e le sperimentazioni sono documentati nel repo e nei log settimanali. Feedback e pull request sono benvenuti!
+
+**Contatti:**
+- GitHub: [@soli92](https://github.com/soli92)
+- Portfolio: [soli92.dev](https://soli92.dev) (futuri aggiornamenti)
