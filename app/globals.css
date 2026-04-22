@@ -1,0 +1,18 @@
+/* Import SoliDS design system */
+@import "@soli92/solids/css/index.css";
+
+/* Tailwind directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* App-specific global styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--sd-color-bg-canvas);
+  color: var(--sd-color-text-primary);
+  font-family: var(--sd-font-body);
+}
