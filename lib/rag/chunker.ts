@@ -1,25 +1,26 @@
 import crypto from "crypto";
 import { RAG_CONFIG } from "./config";
 
+export interface ChunkMetadata {
+  repo: string;
+  owner: string;
+  branch: string;
+  indexedAt: string;
+  [key: string]: string;
+}
+
 export interface Chunk {
   id: string;
   repo: string;
   section: string;
   content: string;
-  metadata: Record<string, unknown>;
+  metadata: ChunkMetadata;
 }
 
-/**
- * Stima approssimativa dei token: 1 token ≈ 4 caratteri
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
+// 1 token ≈ 4 chars → chunkMaxTokens * 4
+const MAX_CHARS = RAG_CONFIG.chunkMaxTokens * 4;
 
-/**
- * Genera un id stabile da repo + section + contenuto (sha256, primi 16 char)
- */
-function stableId(repo: string, section: string, content: string): string {
+function hashId(repo: string, section: string, content: string): string {
   return crypto
     .createHash("sha256")
     .update(`${repo}::${section}::${content}`)
@@ -28,114 +29,110 @@ function stableId(repo: string, section: string, content: string): string {
 }
 
 /**
- * Se un chunk supera chunkMaxTokens lo spezza ulteriormente per paragrafi vuoti
+ * Splits oversized content into sub-chunks by double newline (paragraph boundary).
+ * Each sub-chunk inherits the same section heading.
  */
 function splitByParagraphs(
-  text: string,
   repo: string,
   section: string,
-  metadata: Record<string, unknown>
+  content: string,
+  metadata: ChunkMetadata
 ): Chunk[] {
-  const maxChars = RAG_CONFIG.chunkMaxTokens * 4;
-  const paragraphs = text.split(/\n\n+/);
-  const result: Chunk[] = [];
+  const paragraphs = content.split(/\n\n+/);
+  const subChunks: Chunk[] = [];
   let buffer = "";
   let partIndex = 0;
 
-  const flush = () => {
-    const trimmed = buffer.trim();
-    if (!trimmed) return;
-    const partSection = partIndex === 0 ? section : `${section} [part ${partIndex + 1}]`;
-    result.push({
-      id: stableId(repo, partSection, trimmed),
+  for (const para of paragraphs) {
+    const candidate = buffer ? `${buffer}\n\n${para}` : para;
+    if (candidate.length > MAX_CHARS && buffer) {
+      const subSection = `${section} [part ${partIndex + 1}]`;
+      subChunks.push({
+        id: hashId(repo, subSection, buffer),
+        repo,
+        section: subSection,
+        content: buffer.trim(),
+        metadata,
+      });
+      buffer = para;
+      partIndex++;
+    } else {
+      buffer = candidate;
+    }
+  }
+
+  if (buffer.trim()) {
+    const subSection =
+      partIndex > 0 ? `${section} [part ${partIndex + 1}]` : section;
+    subChunks.push({
+      id: hashId(repo, subSection, buffer),
       repo,
-      section: partSection,
-      content: trimmed,
+      section: subSection,
+      content: buffer.trim(),
       metadata,
     });
-    partIndex++;
-    buffer = "";
-  };
-
-  for (const para of paragraphs) {
-    if ((buffer + "\n\n" + para).length > maxChars) {
-      flush();
-    }
-    buffer = buffer ? buffer + "\n\n" + para : para;
   }
-  flush();
 
-  return result;
+  return subChunks;
 }
 
 /**
- * Splitta un documento markdown per heading h2 (##) e h3 (###).
- * Ogni sezione diventa un Chunk; sezioni troppo grandi vengono spezzate per paragrafi.
+ * Splits a markdown document into chunks by h2 (##) and h3 (###) headings.
+ * Each chunk carries the full heading path (e.g. "Fase 1 > Lezioni apprese").
  */
 export function chunkMarkdown(
   text: string,
-  metadata: Record<string, unknown>
+  metadata: ChunkMetadata
 ): Chunk[] {
-  const repo = (metadata.repo as string) ?? "unknown";
-  const maxChars = RAG_CONFIG.chunkMaxTokens * 4;
-
-  // Splitta sulle righe che iniziano con ## o ###
+  const { repo } = metadata;
   const lines = text.split("\n");
-  const sections: Array<{ headingPath: string; lines: string[] }> = [];
-  let currentHeading = "Introduction";
-  let h2Heading = "";
-  let currentLines: string[] = [];
-
-  for (const line of lines) {
-    const h3Match = line.match(/^###\s+(.*)/);
-    const h2Match = line.match(/^##\s+(.*)/);
-
-    if (h2Match) {
-      // Salva sezione corrente
-      if (currentLines.length > 0) {
-        sections.push({ headingPath: currentHeading, lines: currentLines });
-      }
-      h2Heading = h2Match[1].trim();
-      currentHeading = h2Heading;
-      currentLines = [];
-    } else if (h3Match) {
-      // Salva sezione corrente
-      if (currentLines.length > 0) {
-        sections.push({ headingPath: currentHeading, lines: currentLines });
-      }
-      const h3Heading = h3Match[1].trim();
-      currentHeading = h2Heading ? `${h2Heading} > ${h3Heading}` : h3Heading;
-      currentLines = [];
-    } else {
-      currentLines.push(line);
-    }
-  }
-
-  // Flush dell'ultima sezione
-  if (currentLines.length > 0) {
-    sections.push({ headingPath: currentHeading, lines: currentLines });
-  }
-
   const chunks: Chunk[] = [];
 
-  for (const section of sections) {
-    const content = section.lines.join("\n").trim();
-    if (!content) continue;
+  let currentH2 = "";
+  let currentH3 = "";
+  let buffer = "";
 
-    if (content.length > maxChars) {
-      // Sezione troppo grande: split per paragrafi
-      const subChunks = splitByParagraphs(content, repo, section.headingPath, metadata);
-      chunks.push(...subChunks);
+  function flush(): void {
+    const trimmed = buffer.trim();
+    if (!trimmed) return;
+
+    const section = currentH3
+      ? `${currentH2} > ${currentH3}`
+      : currentH2 || "Intro";
+
+    if (trimmed.length > MAX_CHARS) {
+      const sub = splitByParagraphs(repo, section, trimmed, metadata);
+      chunks.push(...sub);
     } else {
       chunks.push({
-        id: stableId(repo, section.headingPath, content),
+        id: hashId(repo, section, trimmed),
         repo,
-        section: section.headingPath,
-        content,
+        section,
+        content: trimmed,
         metadata,
       });
     }
+
+    buffer = "";
   }
+
+  for (const line of lines) {
+    const h2Match = line.match(/^##\s+(.+)/);
+    const h3Match = line.match(/^###\s+(.+)/);
+
+    if (h2Match) {
+      flush();
+      currentH2 = h2Match[1].trim();
+      currentH3 = "";
+    } else if (h3Match) {
+      flush();
+      currentH3 = h3Match[1].trim();
+    } else {
+      buffer += `${line}\n`;
+    }
+  }
+
+  flush();
 
   return chunks;
 }
