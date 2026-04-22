@@ -9,6 +9,9 @@
  *   SUPABASE_SERVICE_ROLE_KEY – Supabase service role key (bypasses RLS)
  */
 
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import { ingestAll } from "../lib/rag/ingest";
 
 async function main(): Promise<void> {
