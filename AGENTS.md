@@ -413,6 +413,4 @@ npm run build
 
 ---
 
-**Ultimo aggiornamento**: 22 Aprile 2024
-**Versione progetto**: 0.1.0
-**Status**: ✅ Setup completato, pronto per Settimana 2 (Prompt Engineering)
+**Ultimo aggiornamento**: Maggio 2025
