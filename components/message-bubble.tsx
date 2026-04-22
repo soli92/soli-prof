@@ -1,7 +1,6 @@
-/**
- * Message Bubble Component
- * Displays a single chat message with role indicator
- */
+"use client";
+
+import React from "react";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
@@ -13,16 +12,16 @@ export function MessageBubble({ role, content }: MessageBubbleProps) {
 
   return (
     <div
-      className={`flex w-full mb-4 ${isUser ? "justify-end" : "justify-start"}`}
+      className={`flex w-full ${isUser ? "justify-end" : "justify-start"} mb-4`}
     >
       <div
-        className={`max-w-xs px-4 py-3 rounded-lg ${
+        className={`max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl px-4 py-3 rounded-lg ${
           isUser
             ? "bg-blue-600 text-white rounded-br-none"
-            : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none"
+            : "bg-gray-200 text-gray-900 rounded-bl-none"
         }`}
       >
-        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+        <p className="text-sm md:text-base leading-relaxed whitespace-pre-wrap">
           {content}
         </p>
       </div>
