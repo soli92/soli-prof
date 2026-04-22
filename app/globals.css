@@ -1,18 +1,49 @@
-/* Import SoliDS design system */
-@import "@soli92/solids/css/index.css";
-
-/* Tailwind directives */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* App-specific global styles */
+/* Animazioni custom */
+@keyframes bounce-custom {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-bounce {
+  animation: bounce 1s infinite;
+}
+
+.delay-100 {
+  animation-delay: 0.1s;
+}
+
+.delay-200 {
+  animation-delay: 0.2s;
+}
+
+/* Smooth scrolling */
 html {
   scroll-behavior: smooth;
 }
 
-body {
-  background-color: var(--sd-color-bg-canvas);
-  color: var(--sd-color-text-primary);
-  font-family: var(--sd-font-body);
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
