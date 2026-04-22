@@ -6,31 +6,14 @@ Guida passo-passo per clonare, configurare e deployare **Soli Prof** in locale e
 
 - **Node.js 22+** — Verifica con `node --version`
 - **npm 10+** — Verifica con `npm --version`
-- **Account GitHub** — Per generare il Personal Access Token (PAT)
 - **Account Anthropic** — Per la chiave API Claude
 - **Account Vercel** (opzionale, per deploy) — [vercel.com](https://vercel.com)
 
 ---
 
-## 1️⃣ Preparazione: Token e chiavi
+## 1️⃣ Preparazione: chiavi API
 
-### A. GitHub Personal Access Token (PAT)
-
-Necessario per installare `@soli92/solids` da GitHub Packages.
-
-**Step:**
-1. Vai su [github.com/settings/tokens](https://github.com/settings/tokens)
-2. Clicca **"Generate new token (classic)"**
-3. Riempi:
-   - **Note**: "soli-prof npm install"
-   - **Scopes**: Seleziona `read:packages`
-   - **Expiration**: Scegli (es. 30 giorni, 90 giorni, no expiration)
-4. Clicca **"Generate token"**
-5. **Copia il valore** (appare una sola volta!)
-
-Salva il token in un posto sicuro per il prossimo step.
-
-### B. Anthropic API Key
+### Anthropic API Key
 
 Per il tutor personale Claude.
 
@@ -55,42 +38,17 @@ cd soli-prof
 
 ---
 
-## 3️⃣ Configura NPM_TOKEN per GitHub Packages
+## 3️⃣ Installa dipendenze
 
-**Prima** di `npm install`, esporta il GitHub PAT come variabile d'ambiente:
-
-```bash
-# Macros / Linux / WSL
-export NPM_TOKEN=ghp_your_actual_token_here_no_quotes
-
-# Windows PowerShell
-$env:NPM_TOKEN = "ghp_your_actual_token_here_no_quotes"
-
-# Windows CMD
-set NPM_TOKEN=ghp_your_actual_token_here_no_quotes
-```
-
-**Verifica che è impostato:**
-```bash
-echo $NPM_TOKEN  # Deve stampare il token
-```
-
----
-
-## 4️⃣ Installa dipendenze
+`@soli92/solids` è un pacchetto **pubblico su npm** — nessun token necessario.
 
 ```bash
 npm install
 ```
 
-Se ricevi errore `401 Unauthorized` per `@soli92/solids`:
-- Verifica di aver esportato `NPM_TOKEN` correttamente
-- Verifica che il token ha scope `read:packages`
-- Riprova: `npm install`
-
 ---
 
-## 5️⃣ Configura variabili d'ambiente locale
+## 4️⃣ Configura variabili d'ambiente locale
 
 ```bash
 # Copia il template
@@ -100,15 +58,12 @@ cp .env.example .env.local
 Apri `.env.local` e aggiungi:
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-your_actual_key_here_no_quotes
-NPM_TOKEN=ghp_your_token_here_optional_if_already_exported
+ANTHROPIC_API_KEY=sk-ant-your_actual_key_here
 ```
-
-**Nota**: Se hai già esportato `NPM_TOKEN` nel terminal, puoi omettere da `.env.local`.
 
 ---
 
-## 6️⃣ Avvia il dev server
+## 5️⃣ Avvia il dev server
 
 ```bash
 npm run dev
@@ -129,7 +84,7 @@ Apri [http://localhost:3000](http://localhost:3000) nel browser. 🎉
 
 ---
 
-## 7️⃣ Build locale (test pre-deploy)
+## 6️⃣ Build locale (test pre-deploy)
 
 ```bash
 npm run build
@@ -139,7 +94,7 @@ Se il build passa senza errori, sei pronto per il deploy.
 
 ---
 
-## 8️⃣ Deploy su Vercel (opzionale)
+## 7️⃣ Deploy su Vercel (opzionale)
 
 ### Opzione A: Via web dashboard (consigliato)
 
@@ -149,10 +104,9 @@ Se il build passa senza errori, sei pronto per il deploy.
 4. Cerca e seleziona `soli92/soli-prof`
 5. Nella sezione **Environment Variables**, aggiungi:
    - `ANTHROPIC_API_KEY` = (la tua chiave)
-   - `NPM_TOKEN` = (il tuo GitHub PAT, se usato privato)
 6. Clicca **"Deploy"**
 
-Vercel scaricherà la repo, farà build e deploierà. Riceverai un URL tipo `https://soli-prof.vercel.app` (oppure una preview URL temporanea).
+Vercel scaricherà la repo, farà build e deploierà. Riceverai un URL tipo `https://soli-prof.vercel.app`.
 
 ### Opzione B: Via CLI
 
@@ -180,29 +134,12 @@ Una volta che il progetto è su Vercel, puoi configurare il deploy automatico:
    - `VERCEL_ORG_ID` → Trovi nel dashboard Vercel o in `vercel.json`
    - `VERCEL_PROJECT_ID` → Idem
    - `ANTHROPIC_API_KEY` → La tua chiave
-   - `NPM_TOKEN` → Il tuo GitHub PAT
 
 3. Ogni push a `main` triggerera il workflow `.github/workflows/deploy.yml`
 
 ---
 
 ## 🔍 Troubleshooting
-
-### ❌ npm install fallisce con "401 Unauthorized"
-
-**Causa**: `NPM_TOKEN` non impostato correttamente.
-
-**Soluzione**:
-```bash
-# Verifica token
-echo $NPM_TOKEN  # Deve stampare il token
-
-# Se vuoto, riesporta
-export NPM_TOKEN=ghp_your_token
-
-# Riprova
-npm install
-```
 
 ### ❌ "ANTHROPIC_API_KEY is required"
 
@@ -283,7 +220,7 @@ Il link preview URL generato da Vercel è già mobile-responsive. Prova su un di
 Prima di considerare il setup "DONE":
 
 - ✅ Node.js 22+ installato
-- ✅ npm install senza errori
+- ✅ `npm install` senza errori
 - ✅ `.env.local` creato con `ANTHROPIC_API_KEY`
 - ✅ Dev server avviato (`npm run dev`)
 - ✅ Chat funziona (ricevi risposta dal tutor)
