@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, DEFAULT_MODEL } from "@/lib/anthropic";
 import { getRAGSystemPrompt } from "@/lib/prompts";
-import { retrieveContext } from "@/lib/rag/retrieve";
+import { retrieveContextWithSources } from "@/lib/rag/retrieve";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -40,20 +40,29 @@ export async function POST(request: NextRequest) {
     // RAG: retrieval contesto dagli AI_LOG indicizzati
     // Fallback silenzioso: se il retrieval fallisce, il tutor risponde senza contesto
     let retrievedContext = "";
+    let sources: import("@/lib/rag/retrieve").RetrievedSource[] = [];
     try {
-      retrievedContext = await retrieveContext(body.userMessage, 15);
-      console.log(`[RAG] Retrieved ${retrievedContext.length} chars of context`);
+      const ragResult = await retrieveContextWithSources(body.userMessage, 15);
+      retrievedContext = ragResult.context;
+      sources = ragResult.sources;
+      console.log(`[RAG] Retrieved ${retrievedContext.length} chars of context, ${sources.length} sources`);
     } catch (err) {
       console.error("[RAG] Retrieval failed, continuing without context:", err);
     }
 
     // Streaming response con SSE
     const encoder = new TextEncoder();
-    let buffer = "";
 
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          // Invia le sources come evento speciale PRIMA del testo Anthropic
+          // Il client le parserà e le rimuoverà dalla stringa visualizzata
+          const sourcesPayload = JSON.stringify({ type: "sources", data: sources });
+          controller.enqueue(
+            encoder.encode(`__SOURCES__${sourcesPayload}__END_SOURCES__\n`)
+          );
+
           const response = await anthropic.messages.create({
             model: DEFAULT_MODEL,
             max_tokens: 1024,
@@ -67,7 +76,6 @@ export async function POST(request: NextRequest) {
               event.type === "content_block_delta" &&
               event.delta.type === "text_delta"
             ) {
-              buffer += event.delta.text;
               // Invia chunk di testo
               controller.enqueue(
                 encoder.encode(event.delta.text)
