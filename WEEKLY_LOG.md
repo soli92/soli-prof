@@ -83,6 +83,34 @@ Documentazione settimanale del percorso di apprendimento AI engineering.
 
 ---
 
+## Giorno 2 — 24 aprile 2026
+
+### Cosa ho fatto
+- Integrato RAG nella chat del tutor (retrieveContextWithSources)
+- Risolto problema di retrieval scadente passando da topK=5 a topK=15
+- Rinforzato system prompt con regole esplicite di citazione
+- UI badge citazioni cliccabili colorati per repo
+- Tooltip on hover con preview chunk + similarity (fix flicker con CSS-only)
+- Pulsante copia messaggio sulle bubble assistant
+
+### Quello che funziona
+- Tutor cita esplicitamente commit hash dai miei repo (es. e97fe95 per CORS casa-mia-be)
+- Tutor si auto-presenta usando il contesto dei miei AI_LOG (conosce i miei repo)
+- Deploy Vercel automatico su push
+- 70 chunk indicizzati da 6 repo (soli-agent, casa-mia-be/fe, bachelor-party, solids, soli-prof)
+
+### Cosa ho imparato
+- Retrieval è il collo di bottiglia del RAG, non la generation
+- System prompt "ignoralo se non rilevante" = LLM ignora sempre → serve "USA il contesto OBBLIGATORIAMENTE"
+- Tooltip con React state genera flicker, pattern CSS group-hover è stabile
+- Soli Agent è affidabile su sovrascrittura completa file, inaffidabile su patch multi-file
+
+### Aperto per un'altra sessione
+- Ingest automatico (bottone manuale nel frontend vs GitHub Action)
+- Chunking più fine per liste markdown
+- Auth team per Soli Prof
+- Disciplina AI_LOG in tempo reale durante sessioni Cursor reali
+
 ## Settimana 2: [TBD]
 Spazio per prossime scoperte...
 
