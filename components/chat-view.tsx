@@ -2,11 +2,13 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { MessageBubble } from "./message-bubble";
+import { SourceBadges, type Source } from "./source-badges";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  sources?: Source[];
 }
 
 export function ChatView() {
@@ -89,6 +91,26 @@ export function ChatView() {
           cleaned = "";
         }
 
+        // Estrai blocco sources se presente (inviato prima del testo Anthropic)
+        const sourcesMatch = cleaned.match(/__SOURCES__(.+?)__END_SOURCES__\n?/s);
+        if (sourcesMatch) {
+          try {
+            const payload = JSON.parse(sourcesMatch[1]) as { type: string; data: Source[] };
+            if (payload.type === "sources" && Array.isArray(payload.data)) {
+              const parsedSources = payload.data;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, sources: parsedSources } : m
+                )
+              );
+            }
+          } catch (err) {
+            console.warn("Failed to parse sources block:", err);
+          }
+          // Rimuovi il blocco dal testo visualizzato
+          cleaned = cleaned.replace(sourcesMatch[0], "");
+        }
+
         if (cleaned) {
           assistantContent += cleaned;
         }
@@ -109,9 +131,9 @@ export function ChatView() {
         prev.map((m) =>
           m.id === assistantId
             ? {
-              ...m,
-              content: `Errore nella comunicazione con il tutor. Dettagli: ${errMsg}`,
-            }
+                ...m,
+                content: `Errore nella comunicazione con il tutor. Dettagli: ${errMsg}`,
+              }
             : m
         )
       );
@@ -134,11 +156,17 @@ export function ChatView() {
       <div className="flex-1 overflow-y-auto bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 py-6">
           {messages.map((message) => (
-            <MessageBubble
-              key={message.id}
-              role={message.role}
-              content={message.content}
-            />
+            <div key={message.id}>
+              <MessageBubble
+                role={message.role}
+                content={message.content}
+              />
+              {message.role === "assistant" && message.sources && (
+                <div className="ml-1 -mt-2 mb-4">
+                  <SourceBadges sources={message.sources} />
+                </div>
+              )}
+            </div>
           ))}
           {loading && messages[messages.length - 1]?.content === "" && (
             <div className="flex justify-start mb-4">
