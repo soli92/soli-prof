@@ -14,21 +14,18 @@ interface Props {
   sources: Source[];
 }
 
-// Colori per repo (palette coerente con Tailwind standard)
 const REPO_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  "soli-agent":      { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
-  "casa-mia-be":     { bg: "bg-green-50", text: "text-green-700", border: "border-green-200" },
+  "soli-agent":      { bg: "bg-blue-50",    text: "text-blue-700",    border: "border-blue-200" },
+  "casa-mia-be":     { bg: "bg-green-50",   text: "text-green-700",   border: "border-green-200" },
   "casa-mia-fe":     { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
   "bachelor-party-claudiano": { bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
-  "solids":          { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-  "soli-prof":       { bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
+  "solids":          { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200" },
+  "soli-prof":       { bg: "bg-rose-50",    text: "text-rose-700",    border: "border-rose-200" },
 };
 const DEFAULT_COLOR = { bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" };
 
-type SourceWithCount = Source & { count: number };
-
-function deduplicate(sources: Source[]): SourceWithCount[] {
-  const map = new Map<string, SourceWithCount>();
+function deduplicate(sources: Source[]): Array<Source & { count: number }> {
+  const map = new Map<string, Source & { count: number }>();
   for (const s of sources) {
     const key = `${s.repo}::${s.section}`;
     const existing = map.get(key);
@@ -43,7 +40,6 @@ function deduplicate(sources: Source[]): SourceWithCount[] {
 }
 
 function sectionToAnchor(section: string): string {
-  // "Fase 3 > Lezioni apprese" → "fase-3-lezioni-apprese"
   return section
     .toLowerCase()
     .replace(/[>→]/g, "-")
@@ -63,7 +59,6 @@ function buildLink(source: Source): string {
 }
 
 function shortSection(section: string): string {
-  // "Fasi di sviluppo (inferite dal history) > Fase 3 — Refactor..." → "Fase 3 — Refactor..."
   const parts = section.split(">").map((s) => s.trim());
   const last = parts[parts.length - 1];
   return last.length > 35 ? last.slice(0, 32) + "…" : last;
@@ -71,12 +66,10 @@ function shortSection(section: string): string {
 
 export function SourceBadges({ sources }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   if (!sources || sources.length === 0) return null;
 
-  // Filtra rumore: similarity >= 0.20
-  const filtered = sources.filter((s) => s.similarity >= 0.20);
+  const filtered = sources.filter((s) => s.similarity >= 0.2);
   if (filtered.length === 0) return null;
 
   const deduped = deduplicate(filtered);
@@ -101,10 +94,8 @@ export function SourceBadges({ sources }: Props) {
               href={buildLink(source)}
               target="_blank"
               rel="noopener noreferrer"
-              onMouseEnter={() => setHoveredKey(key)}
-              onMouseLeave={() => setHoveredKey(null)}
               className={[
-                "relative inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs",
+                "group relative inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs",
                 "border transition-all",
                 colors.bg,
                 colors.text,
@@ -127,8 +118,17 @@ export function SourceBadges({ sources }: Props) {
                 </span>
               )}
 
-              {hoveredKey === key && source.preview && (
-                <div className="absolute z-10 top-full mt-1 left-0 w-80 p-3 rounded-lg shadow-lg bg-white border border-gray-200 text-gray-700 font-normal pointer-events-none">
+              {/* Tooltip CSS-only: group-hover + opacity transition + delay per evitare flicker */}
+              {source.preview && (
+                <div
+                  className={[
+                    "absolute z-10 top-full mt-1 left-0",
+                    "w-80 p-3 rounded-lg shadow-lg bg-white border border-gray-200",
+                    "text-gray-700 font-normal pointer-events-none",
+                    "opacity-0 group-hover:opacity-100",
+                    "transition-opacity duration-150 delay-300 group-hover:delay-0",
+                  ].join(" ")}
+                >
                   <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">
                     Similarity {source.similarity.toFixed(2)}
                   </div>
