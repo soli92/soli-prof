@@ -85,61 +85,64 @@ export function SourceBadges({ sources }: Props) {
       </div>
       <div className="flex flex-wrap gap-1.5">
         {visible.map((source) => {
-          const colors = REPO_COLORS[source.repo] ?? DEFAULT_COLOR;
+          const colors = REPO_COLORS[source.repo] || DEFAULT_COLOR;
           const isStrong = source.similarity >= 0.35;
           const key = `${source.repo}::${source.section}`;
-          return (
-            <a
-              key={key}
-              href={buildLink(source)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={[
-                "group relative inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs",
-                "border transition-all",
-                colors.bg,
-                colors.text,
-                colors.border,
-                isStrong ? "font-medium" : "opacity-75",
-                "hover:shadow-sm hover:opacity-100",
-              ].join(" ")}
-            >
-              <span className="font-mono">{source.repo}</span>
-              <span className="opacity-50">·</span>
-              <span>{shortSection(source.section)}</span>
-              {source.count > 1 && (
-                <span className="ml-1 px-1 rounded bg-white/60 text-[10px]">
-                  ×{source.count}
-                </span>
-              )}
-              {source.commitHash && (
-                <span className="ml-1 font-mono text-[10px] opacity-60">
-                  {source.commitHash.slice(0, 7)}
-                </span>
-              )}
 
-              {/* Tooltip CSS-only: group-hover + opacity transition + delay per evitare flicker */}
+          return (
+            <div key={key} className="relative group">
+              <a
+                href={buildLink(source)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`
+                  inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs
+                  border transition-colors duration-150
+                  ${colors.bg} ${colors.text} ${colors.border}
+                  ${isStrong ? "font-medium" : "opacity-75"}
+                  hover:opacity-100 hover:shadow-sm
+                `}
+              >
+                <span className="font-mono">{source.repo}</span>
+                <span className="opacity-50">·</span>
+                <span>{shortSection(source.section)}</span>
+                {source.count > 1 && (
+                  <span className="ml-1 px-1 rounded bg-white/60 text-[10px]">
+                    ×{source.count}
+                  </span>
+                )}
+                {source.commitHash && (
+                  <span className="ml-1 font-mono text-[10px] opacity-60">
+                    {source.commitHash.slice(0, 7)}
+                  </span>
+                )}
+              </a>
+
               {source.preview && (
                 <div
-                  className={[
-                    "absolute z-10 top-full mt-1 left-0",
-                    "w-80 p-3 rounded-lg shadow-lg bg-white border border-gray-200",
-                    "text-gray-700 font-normal pointer-events-none",
-                    "opacity-0 group-hover:opacity-100",
-                    "transition-opacity duration-150 delay-300 group-hover:delay-0",
-                  ].join(" ")}
+                  className="
+                    pointer-events-none
+                    absolute z-20 left-0 top-full mt-1
+                    w-80 p-3 rounded-lg shadow-lg bg-white border border-gray-200
+                    text-gray-700 font-normal
+                    opacity-0 invisible
+                    group-hover:opacity-100 group-hover:visible
+                    transition-opacity duration-100 delay-300
+                  "
                 >
                   <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">
                     Similarity {source.similarity.toFixed(2)}
                   </div>
                   <div className="text-xs leading-relaxed">
-                    {source.preview}...
+                    {source.preview}
+                    {source.preview.length >= 200 ? "…" : ""}
                   </div>
                 </div>
               )}
-            </a>
+            </div>
           );
         })}
+
         {hidden > 0 && !expanded && (
           <button
             onClick={() => setExpanded(true)}
