@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, DEFAULT_MODEL } from "@/lib/anthropic";
 import { getRAGSystemPrompt } from "@/lib/prompts";
-import { retrieveContextWithSources } from "@/lib/rag/retrieve";
+import { queryCorpus, type RetrievedSource } from "@/lib/rag-service";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -40,9 +40,9 @@ export async function POST(request: NextRequest) {
     // RAG: retrieval contesto dagli AI_LOG indicizzati
     // Fallback silenzioso: se il retrieval fallisce, il tutor risponde senza contesto
     let retrievedContext = "";
-    let sources: import("@/lib/rag/retrieve").RetrievedSource[] = [];
+    let sources: RetrievedSource[] = [];
     try {
-      const ragResult = await retrieveContextWithSources(body.userMessage, 15);
+      const ragResult = await queryCorpus("ai_logs", body.userMessage, 15);
       retrievedContext = ragResult.context;
       sources = ragResult.sources;
       console.log(`[RAG] Retrieved ${retrievedContext.length} chars of context, ${sources.length} sources`);
