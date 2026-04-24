@@ -26,7 +26,7 @@ Un **AI tutor personale** che risponde a domande di apprendimento con risposte:
 - **Visibility**: Pubblica
 - **Branch principale**: `main`
 - **URL**: https://github.com/soli92/soli-prof
-- **Docs**: README.md, WEEKLY_LOG.md, AI_LOG.md (memoria sviluppo AI-assisted), questo file
+- **Docs**: README.md, WEEKLY_LOG.md, AI_LOG.md (memoria sviluppo AI-assisted), AGENTS.md, AGENT.md (redirect)
 
 ---
 
@@ -36,8 +36,11 @@ Un **AI tutor personale** che risponde a domande di apprendimento con risposte:
 soli-prof/
 ├── app/
 │   ├── api/
-│   │   └── chat/
-│   │       └── route.ts           # POST /api/chat — streaming SSE
+│   │   ├── chat/
+│   │   │   └── route.ts           # POST /api/chat — streaming SSE (RAG via lib/rag legacy)
+│   │   └── rag/
+│   │       ├── query/route.ts     # POST /api/rag/query — retrieval multi-corpus (x-api-key)
+│   │       └── ingest/route.ts    # POST /api/rag/ingest — indicizzazione (x-api-key + x-admin-confirm)
 │   ├── page.tsx                   # Pagina home
 │   ├── layout.tsx                 # Root layout + metadati
 │   └── globals.css                # Stili globali
@@ -46,7 +49,9 @@ soli-prof/
 │   └── message-bubble.tsx         # Visualizzazione messaggi
 ├── lib/
 │   ├── anthropic.ts               # Client Anthropic (init, config)
-│   └── prompts.ts                 # System prompt del tutor
+│   ├── prompts.ts                 # System prompt del tutor (+ variant RAG)
+│   ├── rag/                       # Modulo RAG legacy usato da /api/chat (retrieve)
+│   └── rag-service/               # Modulo RAG multi-corpus (ingest, query, barrel index.ts)
 ├── public/                        # Assets statici (favicon, ecc.)
 ├── .github/
 │   └── workflows/
@@ -61,7 +66,10 @@ soli-prof/
 ├── next.config.ts                 # Next.js config
 ├── README.md                       # Documentazione progetto
 ├── WEEKLY_LOG.md                  # Log settimanale apprendimento
-├── AGENTS.md                       # Questo file
+├── AGENTS.md                       # Questo file (contesto operativo principale)
+├── AGENT.md                        # Punta qui → AGENTS.md (alias nome singolare)
+├── AI_LOG.md                      # Memoria sviluppo AI-assisted
+├── vitest.config.ts               # Unit test (lib/**/*.test.ts)
 └── LICENSE                        # MIT License
 ```
 
@@ -189,10 +197,46 @@ Possibile creare funzione `getSystemPrompt(specialization?: string)` per adattar
 
 ---
 
+## RAG: `lib/rag-service` e endpoint HTTP
+
+### Due layer
+| Modulo | Uso |
+|--------|-----|
+| **`lib/rag/`** | Legacy: `retrieveContextWithSources` importato da **`app/api/chat/route.ts`**. Non rimuovere finché la chat non viene migrata. |
+| **`lib/rag-service/`** | Nuovo: multi-corpus (`ai_logs`, `agents_md`), ingest, query, errori tipizzati. Import pubblico da **`@/lib/rag-service`** (barrel `index.ts`). |
+
+### CLI ingest
+```bash
+npm run rag:ingest              # tutti i corpus
+npm run rag:ingest -- ai_logs   # solo AI_LOG.md
+npm run rag:ingest -- agents_md # solo AGENTS.md
+```
+Script: `scripts/rag-ingest.ts` (carica `.env.local` via `dotenv`).
+
+### POST `/api/rag/query`
+- Header: `x-api-key: <RAG_API_KEY>`
+- Body JSON: `{ "corpus": "ai_logs" \| "agents_md", "query": string, "topK"?: number }`
+- Risposta: `{ corpus, context, sources }`
+
+### POST `/api/rag/ingest`
+- Header: `x-api-key` come sopra, più **`x-admin-confirm: yes`**
+- Body JSON: `{ "corpus": "ai_logs" \| "agents_md" \| "all" }`
+- Risposta: `{ reports: IngestReport[] }` (operazione sincrona, può richiedere minuti)
+
+---
+
 ## Variabili d'ambiente
 
 ### Richieste (produzione)
 - `ANTHROPIC_API_KEY` — Chiave API da [console.anthropic.com](https://console.anthropic.com)
+
+### RAG (vector store + HTTP)
+- `VOYAGE_API_KEY` — Embeddings (Voyage)
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — Supabase pgvector
+- `GITHUB_TOKEN` — Lettura repo per ingest (Contents API)
+- `RAG_API_KEY` — Protegge `/api/rag/query` e `/api/rag/ingest` (stesso valore in header `x-api-key`)
+
+Vedi `.env.example` per i placeholder.
 
 ### Opzionali (dev)
 - `VERCEL_TOKEN` — Per deploy da CLI (raramente usato)
@@ -295,20 +339,17 @@ vercel --prod  # Richiede VERCEL_TOKEN in .env.local o login interattivo
 
 ---
 
-## Testing (setup futuro)
+## Testing
 
-Per ora non c'è test framework. Se aggiungerai test:
+**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. I file di test vivono accanto al codice: `lib/**/*.test.ts` (oggi: `lib/rag-service/*.test.ts` per chunker, config, errori).
 
-- Unit test: `lib/**/*.test.ts`
-- Integration test: `app/api/**/*.test.ts`
-- E2E test: Playwright in `e2e/`
-
-Comandi suggeriti:
 ```bash
-npm test              # Esegui tutti
-npm run test:watch   # Watch mode
-npm run test:e2e     # Playwright
+npm test              # vitest run — CI-friendly
+npm run test:watch    # vitest — watch locale
+npm run type-check    # tsc --noEmit
 ```
+
+**Integration / E2E** (non ancora in repo): eventuali test su `app/api/**` o Playwright in `e2e/` restano da introdurre in una fase successiva.
 
 ---
 
@@ -327,6 +368,8 @@ npm run test:e2e     # Playwright
 4. Type-check (`tsc --noEmit`)
 5. Build (`next build`)
 6. Deploy Vercel (con `VERCEL_TOKEN` + `ANTHROPIC_API_KEY` come secrets)
+
+In locale, prima del push, conviene anche **`npm test`**. Il workflow in `.github/workflows/deploy.yml` può essere esteso con uno step `npm test` quando vorrai bloccare deploy su test rotti.
 
 ### Secrets da aggiungere
 
@@ -413,4 +456,4 @@ npm run build
 
 ---
 
-**Ultimo aggiornamento**: Maggio 2025
+**Ultimo aggiornamento**: Aprile 2026 (RAG multi-corpus, Vitest, API `/api/rag/*`)

@@ -6,7 +6,7 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 
 ## Overview del progetto
 
-**Soli Prof**: app **Next.js 16** + **React 19** con chat tutor in italiano, streaming SSE da **`/api/chat`**, client **Anthropic** (`@anthropic-ai/sdk`), system prompt in `lib/prompts.ts` e variante **RAG** (`getRAGSystemPrompt`), UI con **@soli92/solids**. **RAG** su **Supabase + pgvector**: ingest da GitHub (Contents API) degli `AI_LOG.md` dei repo configurati, chunking markdown, embedding **Voyage AI** (HTTP), script CLI `npm run rag:ingest` → `scripts/rag-ingest.ts`, SQL `sql/001_pgvector_setup.sql`. Documentazione (`WEEKLY_LOG.md`, `SETUP_GUIDE.md`) e CI verso Vercel.
+**Soli Prof**: app **Next.js 16** + **React 19** con chat tutor in italiano, streaming SSE da **`/api/chat`**, client **Anthropic** (`@anthropic-ai/sdk`), system prompt in `lib/prompts.ts` e variante **RAG** (`getRAGSystemPrompt`), UI con **@soli92/solids**. **RAG** su **Supabase + pgvector**: ingest da GitHub (Contents API), chunking markdown, embedding **Voyage AI** (HTTP), SQL `sql/001_pgvector_setup.sql`. Due moduli: **`lib/rag/`** (legacy, retrieve ancora usato da `/api/chat`) e **`lib/rag-service/`** (multi-corpus `ai_logs` / `agents_md`, barrel `index.ts`). CLI `npm run rag:ingest` con corpus opzionale; HTTP **`POST /api/rag/query`** e **`POST /api/rag/ingest`**. **Vitest**: `lib/rag-service/*.test.ts`, `npm test`. Documentazione (`WEEKLY_LOG.md`, `SETUP_GUIDE.md`, `AGENTS.md`, `AGENT.md`, questo file) e CI verso Vercel.
 
 **Stack AI usato (inferito; aggiornato 2026-04-22)**: **Cursor / assistente LLM** per scaffold, doc e implementazione RAG (serie `feat(rag):` con Step A ripetuti poi consolidati). Runtime tutor: **Anthropic** + contesto recuperato (`lib/rag/retrieve.ts`, `topK=15` in `9ba4c05`). Embeddings: **Voyage** (`VOYAGE_API_KEY`, `lib/rag/embedder.ts`). Vector store: **Supabase** + **pgvector** (`@supabase/supabase-js`, RPC/search in `lib/rag/store.ts`). *Modello IDE esatto non desumibile.*
 
@@ -122,6 +122,16 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 - Script ingest deve caricare **`.env.local`** in modo coerente con `dotenv`/`tsx` (`91dbb86 fix(rag-ingest)`).
 - Ripetere molti commit “Step A” con messaggio simile appesantisce la history — squash o piano unico riduce rumore.
 
+### Fase 5 — Refactor RAG multi-corpus (`lib/rag-service`, API HTTP, Vitest)
+
+**Timeframe**: 2026-04-24 (Fase 2A/2B modulo + store/ingest/query; Fase 3 route + CLI; test unitari e aggiornamento doc).
+
+**Cosa è stato fatto**: cartella **`lib/rag-service/`** (tipi, errori, config multi-corpus, chunker, embedder, `github.ts` generico per nome file, `store.ts` per tabella/RPC per corpus, `ingest.ts`, `query.ts`, **`index.ts`** barrel). Route Next **`app/api/rag/query`** e **`app/api/rag/ingest`** con `RAG_API_KEY` e (ingest) header **`x-admin-confirm: yes`**. Script **`scripts/rag-ingest.ts`** aggiornato con arg `all` \| `ai_logs` \| `agents_md`. **Vitest** 3 + `vitest.config.ts`, test su chunker/config/errori. **`AGENT.md`** alla root rimanda a **`AGENTS.md`**.
+
+**Decisioni**: non migrare subito **`/api/chat`** su `rag-service` — il flusso streaming resta su **`lib/rag/retrieve`** fino a una fase dedicata.
+
+**Lezioni**: barrel export + errori tipizzati semplificano consumer HTTP/CLI; test puri su chunker/config evitano dipendenze da Supabase/GitHub in CI.
+
 ---
 
 ## Pattern ricorrenti identificati
@@ -130,7 +140,7 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 - **Doppio binario documentazione**: README narrativo + `SETUP_GUIDE` operativo + `AGENTS` per agenti.
 - **Correzione post-scaffold** esplicita nei messaggi (`scaffolding batch`).
 - **Allineamento toolchain**: Node 22 (`.nvmrc` / `engines`).
-- **RAG come estensione del tutor**: stesso endpoint chat, contesto opzionale ma governato da prompt dedicato.
+- **RAG come estensione del tutor**: stesso endpoint chat, contesto opzionale ma governato da prompt dedicato (`lib/rag`); in parallelo **RAG servizio** esposto via `lib/rag-service` + `/api/rag/*` per corpus multipli.
 
 ---
 
@@ -143,7 +153,8 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 - **LLM integration**: Anthropic SDK, SSE in API route, `SYSTEM_PROMPT` + **`getRAGSystemPrompt`**
 - **RAG / dati**: Supabase (pgvector), `@supabase/supabase-js`, SQL in `sql/001_pgvector_setup.sql`
 - **Embeddings**: Voyage AI API (`lib/rag/embedder.ts`, `VOYAGE_API_KEY` in `.env.example`)
-- **Ingest**: GitHub Contents API (`lib/rag/github.ts`), CLI `tsx scripts/rag-ingest.ts` (`npm run rag:ingest`)
+- **Ingest**: GitHub Contents API (legacy `lib/rag/github.ts`; nuovo `lib/rag-service/github.ts`), CLI `npm run rag:ingest` → `scripts/rag-ingest.ts` (corpus opzionale)
+- **Test**: Vitest (`npm test`), file `lib/**/*.test.ts`
 
 ---
 
@@ -205,22 +216,22 @@ Estratto HEAD→radice (in cima i più recenti): prima blocco **RAG**, poi scaff
 
 ---
 
-> **Nota metodologica**: ultimo aggiornamento manuale **2026-04-22** (post-RAG); le parti *[inferito]* vanno validate dal maintainer.
+> **Nota metodologica**: ultimo aggiornamento manuale **2026-04-24** (post refactor `rag-service` + Vitest); le parti *[inferito]* vanno validate dal maintainer.
 
 ---
 
 ## Metodologia compilazione automatica
 
-Ultimo aggiornamento contenuti **2026-04-22** (allineato a `9ba4c05`), analizzando:
+Ultimo aggiornamento contenuti **2026-04-24** (aggiunta Fase 5 + test), analizzando in origine:
 
 - **85** commit in `git log` su `main`
-- **~18** file/aree di contesto (`package.json`, `next.config.ts`, `app/api/chat/route.ts`, `lib/prompts.ts`, `lib/anthropic.ts`, `lib/rag/*`, `scripts/rag-ingest.ts`, `sql/001_pgvector_setup.sql`, `.env.example`, `AGENTS.md`, workflow CI, README/SETUP/WEEKLY_LOG)
+- **~18+** file/aree di contesto (`package.json`, `next.config.ts`, `app/api/chat/route.ts`, `app/api/rag/*`, `lib/prompts.ts`, `lib/anthropic.ts`, `lib/rag/*`, `lib/rag-service/*`, `scripts/rag-ingest.ts`, `sql/001_pgvector_setup.sql`, `.env.example`, `AGENTS.md`, `AGENT.md`, `vitest.config.ts`, workflow CI, README/SETUP/WEEKLY_LOG)
 - **0** occorrenze `TODO|FIXME|HACK|XXX` nei path sorgente campionati
 
 **Punti di minore confidenza:**
 
 - Prompt testuali fase RAG ricostruiti senza transcript sessione.
 - Dettaglio RLS/policies Supabase in produzione vs file SQL in repo.
-- Copertura test automatici su pipeline RAG (non evidenziata nei commit).
+- Copertura test: unit su `lib/rag-service` presenti; integrazione `/api/rag/*` e ingest E2E ancora assenti.
 
 ---
