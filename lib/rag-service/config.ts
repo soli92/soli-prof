@@ -29,7 +29,15 @@ export const RAG_CONFIG = {
   chunkMaxTokens: 1500,
   defaultTopK: 15,
   maxTopK: 30,
-  similarityThreshold: 0.20,
+  // Soglia per includere chunk nel contesto passato al LLM.
+  // Valore basso = più materiale per inferenza, il LLM sceglie cosa usare.
+  similarityThresholdForContext: 0.20,
+
+  // Soglia per mostrare chunk come badge fonti nell'UI.
+  // Valore alto = mostra solo fonti di cui siamo confidenti.
+  // Asimmetrico rispetto al context: il LLM può vedere chunk marginali
+  // che non mostriamo all'utente, evitando di ingannarlo su "fonti" incerte.
+  similarityThresholdForSources: 0.40,
 };
 
 export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {

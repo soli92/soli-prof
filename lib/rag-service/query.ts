@@ -52,14 +52,21 @@ export async function queryCorpus(
   // Similarity search nella tabella giusta
   const retrieved = await searchSimilar(corpus, queryEmbedding, safeTopK);
 
-  // Filtro rumore
-  const filtered = retrieved.filter(
-    (c) => c.similarity >= RAG_CONFIG.similarityThreshold
+  // Filtro per contesto LLM: include chunk con similarity moderata,
+  // il LLM ha più materiale per inferenza
+  const contextFiltered = retrieved.filter(
+    (c) => c.similarity >= RAG_CONFIG.similarityThresholdForContext
+  );
+
+  // Filtro per sources (badge UI): mostra solo chunk ad alta confidenza,
+  // evita rumore visivo su query generiche
+  const sourcesFiltered = retrieved.filter(
+    (c) => c.similarity >= RAG_CONFIG.similarityThresholdForSources
   );
 
   // Build context + sources
-  const context = buildContextString(filtered);
-  const sources: RetrievedSource[] = filtered.map((c) => ({
+  const context = buildContextString(contextFiltered);
+  const sources: RetrievedSource[] = sourcesFiltered.map((c) => ({
     repo: c.repo,
     section: c.section,
     similarity: c.similarity,
