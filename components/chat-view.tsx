@@ -78,67 +78,138 @@ export function ChatView() {
       const decoder = new TextDecoder();
       let assistantContent = "";
       let errored = false;
+      // Buffer accumulativo: il blocco __SOURCES__...__END_SOURCES__ può arrivare
+      // spezzato su più chunk SSE (~16KB). Assumiamo che il marker sia sempre
+      // all'inizio dello stream; se il backend cambiasse ordine, andrebbe rivista
+      // questa logica.
+      let rawBuffer = "";
+      let sourcesParsed = false;
+
+      const SOURCES_MARK = "__SOURCES__";
+      const SOURCES_END = "__END_SOURCES__";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
+        rawBuffer += chunk;
 
-        // Filtra marker del server
-        let cleaned = chunk;
         let hitDone = false;
-        if (cleaned.includes("[DONE]")) {
+        if (rawBuffer.includes("[DONE]")) {
           hitDone = true;
-          cleaned = cleaned.replace(/\n?\[DONE\]/g, "");
+          rawBuffer = rawBuffer.replace(/\n?\[DONE\]/g, "");
         }
-        const errorMatch = cleaned.match(/\n?\[ERROR\]:\s*(.*)/);
+
+        const errorMatch = rawBuffer.match(/\n?\[ERROR\]:\s*(.*)/);
         if (errorMatch) {
           errored = true;
           const errMsg = errorMatch[1] || "Errore sconosciuto";
           assistantContent = `Errore nella comunicazione con il tutor. Dettagli: ${errMsg}`;
-          cleaned = "";
+          rawBuffer = "";
+          sourcesParsed = true;
         }
 
-        // Estrai blocco sources se presente (inviato prima del testo Anthropic)
-        const sourcesMatch = cleaned.match(/__SOURCES__(.+?)__END_SOURCES__\n?/s);
-        if (sourcesMatch) {
-          try {
-            const payload = JSON.parse(sourcesMatch[1]) as { type: string; data: Source[] };
-            if (payload.type === "sources" && Array.isArray(payload.data)) {
-              const parsedSources = payload.data;
-              // Prima salva le sources (immediato)
+        if (!sourcesParsed && !errored) {
+          if (rawBuffer.startsWith(SOURCES_MARK)) {
+            const endIdx = rawBuffer.indexOf(SOURCES_END);
+            if (endIdx === -1) {
+              // Blocco sources incompleto: non appendere come testo
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === assistantId ? { ...m, sources: parsedSources } : m
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        content: assistantContent,
+                        processingPhase:
+                          hitDone ? null : m.processingPhase,
+                      }
+                    : m
                 )
               );
-              // Poi, al frame successivo, passa a "writing" per evitare flicker
-              // quando searching e primo delta testo verrebbero renderizzati insieme
-              if (typeof window !== "undefined") {
-                window.requestAnimationFrame(() => {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantId && m.processingPhase === "searching"
-                        ? { ...m, processingPhase: "writing" }
-                        : m
-                    )
-                  );
-                });
-              }
+              continue;
             }
-          } catch (err) {
-            console.warn("Failed to parse sources block:", err);
+
+            const payloadStart = SOURCES_MARK.length;
+            const jsonPayload = rawBuffer.slice(payloadStart, endIdx);
+            const afterMarker = rawBuffer
+              .slice(endIdx + SOURCES_END.length)
+              .replace(/^\n/, "");
+            rawBuffer = afterMarker;
+
+            try {
+              const payload = JSON.parse(jsonPayload) as {
+                type: string;
+                data: Source[];
+              };
+              if (payload.type === "sources" && Array.isArray(payload.data)) {
+                const parsedSources = payload.data;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, sources: parsedSources } : m
+                  )
+                );
+                if (typeof window !== "undefined") {
+                  window.requestAnimationFrame(() => {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === assistantId && m.processingPhase === "searching"
+                          ? { ...m, processingPhase: "writing" }
+                          : m
+                      )
+                    );
+                  });
+                }
+              }
+            } catch (err) {
+              console.warn("Failed to parse sources block:", err);
+            }
+
+            sourcesParsed = true;
+          } else if (
+            rawBuffer.length > 0 &&
+            rawBuffer.length < SOURCES_MARK.length &&
+            SOURCES_MARK.startsWith(rawBuffer)
+          ) {
+            // Prefisso parziale di __SOURCES__: aspetta altri byte
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      content: assistantContent,
+                      processingPhase:
+                        hitDone ? null : m.processingPhase,
+                    }
+                  : m
+              )
+            );
+            continue;
+          } else if (rawBuffer.length === 0) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      content: assistantContent,
+                      processingPhase:
+                        hitDone ? null : m.processingPhase,
+                    }
+                  : m
+              )
+            );
+            continue;
+          } else {
+            // Nessun blocco sources (es. retrieval fallito): stream testuale normale
+            sourcesParsed = true;
           }
-          // Rimuovi il blocco dal testo visualizzato
-          cleaned = cleaned.replace(sourcesMatch[0], "");
         }
 
-        if (cleaned) {
-          assistantContent += cleaned;
+        if (rawBuffer) {
+          assistantContent += rawBuffer;
+          rawBuffer = "";
         }
 
-        // Aggiornamento in tempo reale del messaggio assistant
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
