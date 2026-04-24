@@ -1,44 +1,61 @@
-/**
- * CLI entry point for the RAG ingest pipeline.
- * Run with: npm run rag:ingest
- *
- * Required env vars:
- *   GITHUB_TOKEN          – GitHub personal access token (read:contents)
- *   VOYAGE_API_KEY        – Voyage AI API key
- *   SUPABASE_URL          – Supabase project URL
- *   SUPABASE_SERVICE_ROLE_KEY – Supabase service role key (bypasses RLS)
- */
-
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
-import { ingestAll } from "../lib/rag/ingest";
+import chalk from "chalk";
+import {
+  ingestCorpus,
+  ingestAllCorpora,
+  CORPUS_REGISTRY,
+  type CorpusId,
+} from "../lib/rag-service";
 
-async function main(): Promise<void> {
-  console.log("🚀 Starting RAG ingest pipeline...\n");
-  const startMs = Date.now();
+async function main() {
+  const arg = process.argv[2];
 
-  const report = await ingestAll();
-
-  const elapsedSec = ((Date.now() - startMs) / 1000).toFixed(1);
-
-  console.log("\n── Ingest Report ──────────────────────────────");
-  console.log(`   Total repos indexed : ${report.totalRepos}`);
-  console.log(`   Total chunks stored : ${report.totalChunks}`);
-  console.log(`   Elapsed             : ${elapsedSec}s`);
-
-  if (Object.keys(report.byRepo).length > 0) {
-    console.log("\n   Breakdown by repo:");
-    for (const [repo, count] of Object.entries(report.byRepo)) {
-      console.log(`     • ${repo}: ${count} chunks`);
+  if (!arg || arg === "all") {
+    console.log(chalk.cyan("\n🚀 Ingesting ALL corpora\n"));
+    const reports = await ingestAllCorpora();
+    console.log(chalk.green("\n── Ingest Reports ─────────────────────────────"));
+    for (const r of reports) {
+      console.log(`   [${r.corpus}]`);
+      console.log(`     Total repos indexed : ${r.totalRepos}`);
+      console.log(`     Total chunks stored : ${r.totalChunks}`);
+      console.log(`     Elapsed             : ${(r.elapsedMs / 1000).toFixed(1)}s`);
+      console.log(`     Breakdown by repo:`);
+      for (const [repo, count] of Object.entries(r.byRepo)) {
+        console.log(`       • ${repo}: ${count} chunks`);
+      }
+      console.log();
     }
+    console.log(chalk.green("───────────────────────────────────────────────\n"));
+    return;
   }
 
-  console.log("───────────────────────────────────────────────\n");
+  const validCorpora = Object.keys(CORPUS_REGISTRY) as CorpusId[];
+  if (!validCorpora.includes(arg as CorpusId)) {
+    console.error(
+      chalk.red(
+        `❌ Unknown corpus "${arg}". Valid: ${validCorpora.join(", ")}, all`
+      )
+    );
+    process.exit(1);
+  }
+
+  const report = await ingestCorpus(arg as CorpusId);
+
+  console.log(chalk.green("\n── Ingest Report ──────────────────────────────"));
+  console.log(`   Corpus              : ${report.corpus}`);
+  console.log(`   Total repos indexed : ${report.totalRepos}`);
+  console.log(`   Total chunks stored : ${report.totalChunks}`);
+  console.log(`   Elapsed             : ${(report.elapsedMs / 1000).toFixed(1)}s`);
+  console.log(`   Breakdown by repo:`);
+  for (const [repo, count] of Object.entries(report.byRepo)) {
+    console.log(`     • ${repo}: ${count} chunks`);
+  }
+  console.log(chalk.green("───────────────────────────────────────────────\n"));
 }
 
-main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`\n❌ Ingest failed: ${message}`);
+main().catch((err) => {
+  console.error(chalk.red("❌ Ingest failed:"), err instanceof Error ? err.message : err);
   process.exit(1);
 });
