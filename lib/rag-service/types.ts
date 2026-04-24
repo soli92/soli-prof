@@ -62,3 +62,23 @@ export interface RepoTarget {
   repo: string;
   branch: string;
 }
+
+/**
+ * Eventi emessi durante l'ingest quando viene passato onProgress.
+ */
+export type IngestProgressEvent =
+  | { type: "start"; corpus: CorpusId; totalRepos: number }
+  | { type: "repo-start"; repo: string }
+  | { type: "repo-fetched"; repo: string; chars: number }
+  | { type: "repo-chunked"; repo: string; chunks: number }
+  | { type: "repo-done"; repo: string; chunks: number; elapsedMs: number }
+  | { type: "repo-skipped"; repo: string; reason: string }
+  | { type: "repo-error"; repo: string; error: string }
+  | { type: "phase"; phase: "embedding" | "upserting"; totalChunks?: number }
+  | { type: "complete"; corpus: CorpusId; totalRepos: number; totalChunks: number; elapsedMs: number };
+
+export type IngestProgressCallback = (event: IngestProgressEvent) => void;
+
+export interface IngestOptions {
+  onProgress?: IngestProgressCallback;
+}

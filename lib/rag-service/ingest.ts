@@ -14,10 +14,14 @@ import type {
   Chunk,
   ChunkWithEmbedding,
   CorpusId,
+  IngestOptions,
   IngestReport,
 } from "./types";
 
-export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
+export async function ingestCorpus(
+  corpus: CorpusId,
+  options: IngestOptions = {}
+): Promise<IngestReport> {
   const startedAt = Date.now();
   const { sourceFileName } = CORPUS_REGISTRY[corpus];
   const repos = CORPUS_REPOS[corpus];
@@ -25,12 +29,16 @@ export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
   console.log(chalk.cyan(`\n🚀 Ingest corpus "${corpus}" (file: ${sourceFileName})`));
   console.log(chalk.gray(`   ${repos.length} repos to process\n`));
 
+  options.onProgress?.({ type: "start", corpus, totalRepos: repos.length });
+
   const allChunks: Chunk[] = [];
   const byRepo: Record<string, number> = {};
   const indexedAt = new Date().toISOString();
 
   for (const target of repos) {
+    options.onProgress?.({ type: "repo-start", repo: target.repo });
     try {
+      const startedAtRepo = Date.now();
       const markdown = await fetchTextFile(
         target.owner,
         target.repo,
@@ -42,6 +50,11 @@ export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
         console.log(
           chalk.yellow(`⚠  Skipped ${target.owner}/${target.repo} — no ${sourceFileName}`)
         );
+        options.onProgress?.({
+          type: "repo-skipped",
+          repo: target.repo,
+          reason: `no ${sourceFileName}`,
+        });
         continue;
       }
 
@@ -51,6 +64,12 @@ export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
         )
       );
 
+      options.onProgress?.({
+        type: "repo-fetched",
+        repo: target.repo,
+        chars: markdown.length,
+      });
+
       const repoChunks = chunkMarkdown(markdown, {
         repo: target.repo,
         owner: target.owner,
@@ -58,11 +77,25 @@ export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
         indexedAt,
       });
 
+      options.onProgress?.({
+        type: "repo-chunked",
+        repo: target.repo,
+        chunks: repoChunks.length,
+      });
+
       allChunks.push(...repoChunks);
       byRepo[target.repo] = repoChunks.length;
+
+      options.onProgress?.({
+        type: "repo-done",
+        repo: target.repo,
+        chunks: repoChunks.length,
+        elapsedMs: Date.now() - startedAtRepo,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.log(chalk.red(`✗ Error on ${target.owner}/${target.repo}: ${msg}`));
+      options.onProgress?.({ type: "repo-error", repo: target.repo, error: msg });
     }
   }
 
@@ -74,6 +107,13 @@ export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
 
   if (allChunks.length === 0) {
     console.log(chalk.yellow("⚠  Nothing to embed. Exiting."));
+    options.onProgress?.({
+      type: "complete",
+      corpus,
+      totalRepos: Object.keys(byRepo).length,
+      totalChunks: allChunks.length,
+      elapsedMs: Date.now() - startedAt,
+    });
     return {
       corpus,
       totalRepos: 0,
@@ -84,6 +124,12 @@ export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
   }
 
   // Embedding
+  options.onProgress?.({
+    type: "phase",
+    phase: "embedding",
+    totalChunks: allChunks.length,
+  });
+
   const embeddings = await embedTexts(
     allChunks.map((c) => c.content),
     "document"
@@ -97,6 +143,8 @@ export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
   }));
 
   // Upsert
+  options.onProgress?.({ type: "phase", phase: "upserting" });
+
   await upsertChunks(corpus, chunksWithEmbedding);
 
   console.log(
@@ -104,6 +152,14 @@ export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
       `✅ Ingest complete: ${chunksWithEmbedding.length} chunks upserted to ${CORPUS_REGISTRY[corpus].supabaseTable}`
     )
   );
+
+  options.onProgress?.({
+    type: "complete",
+    corpus,
+    totalRepos: Object.keys(byRepo).length,
+    totalChunks: allChunks.length,
+    elapsedMs: Date.now() - startedAt,
+  });
 
   return {
     corpus,
@@ -117,10 +173,12 @@ export async function ingestCorpus(corpus: CorpusId): Promise<IngestReport> {
 /**
  * Ingest tutti i corpus in sequenza. Comodo per rebuild completo.
  */
-export async function ingestAllCorpora(): Promise<IngestReport[]> {
+export async function ingestAllCorpora(
+  options: IngestOptions = {}
+): Promise<IngestReport[]> {
   const reports: IngestReport[] = [];
   for (const corpus of Object.keys(CORPUS_REGISTRY) as CorpusId[]) {
-    const report = await ingestCorpus(corpus);
+    const report = await ingestCorpus(corpus, options);
     reports.push(report);
   }
   return reports;

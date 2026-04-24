@@ -44,4 +44,7 @@ export type {
   QueryResult,
   IngestReport,
   RepoTarget,
+  IngestProgressEvent,
+  IngestProgressCallback,
+  IngestOptions,
 } from "./types";
