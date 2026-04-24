@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { MessageBubble } from "./message-bubble";
+import { ProcessingIndicator, type ProcessingPhase } from "./processing-indicator";
 import { SourceBadges, type Source } from "./source-badges";
 
 interface Message {
@@ -9,6 +10,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
+  processingPhase?: ProcessingPhase | null;
 }
 
 export function ChatView() {
@@ -46,7 +48,12 @@ export function ChatView() {
     setMessages((prev) => [
       ...prev,
       userMessage,
-      { id: assistantId, role: "assistant", content: "" },
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        processingPhase: "searching",
+      },
     ]);
     setInput("");
     setLoading(true);
@@ -80,7 +87,9 @@ export function ChatView() {
 
         // Filtra marker del server
         let cleaned = chunk;
+        let hitDone = false;
         if (cleaned.includes("[DONE]")) {
+          hitDone = true;
           cleaned = cleaned.replace(/\n?\[DONE\]/g, "");
         }
         const errorMatch = cleaned.match(/\n?\[ERROR\]:\s*(.*)/);
@@ -98,11 +107,25 @@ export function ChatView() {
             const payload = JSON.parse(sourcesMatch[1]) as { type: string; data: Source[] };
             if (payload.type === "sources" && Array.isArray(payload.data)) {
               const parsedSources = payload.data;
+              // Prima salva le sources (immediato)
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId ? { ...m, sources: parsedSources } : m
                 )
               );
+              // Poi, al frame successivo, passa a "writing" per evitare flicker
+              // quando searching e primo delta testo verrebbero renderizzati insieme
+              if (typeof window !== "undefined") {
+                window.requestAnimationFrame(() => {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantId && m.processingPhase === "searching"
+                        ? { ...m, processingPhase: "writing" }
+                        : m
+                    )
+                  );
+                });
+              }
             }
           } catch (err) {
             console.warn("Failed to parse sources block:", err);
@@ -118,7 +141,14 @@ export function ChatView() {
         // Aggiornamento in tempo reale del messaggio assistant
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantId ? { ...m, content: assistantContent } : m
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: assistantContent,
+                  processingPhase:
+                    errored || hitDone ? null : m.processingPhase,
+                }
+              : m
           )
         );
 
@@ -133,12 +163,20 @@ export function ChatView() {
             ? {
                 ...m,
                 content: `Errore nella comunicazione con il tutor. Dettagli: ${errMsg}`,
+                processingPhase: null,
               }
             : m
         )
       );
     } finally {
       setLoading(false);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId && m.processingPhase != null
+            ? { ...m, processingPhase: null }
+            : m
+        )
+      );
     }
   };
 
@@ -157,28 +195,44 @@ export function ChatView() {
         <div className="max-w-4xl mx-auto px-4 py-6">
           {messages.map((message) => (
             <div key={message.id}>
-              <MessageBubble
-                role={message.role}
-                content={message.content}
-              />
-              {message.role === "assistant" && message.sources && (
-                <div className="ml-1 -mt-2 mb-4">
-                  <SourceBadges sources={message.sources} />
+              {message.role === "user" ? (
+                <MessageBubble role={message.role} content={message.content} />
+              ) : message.content === "" ? (
+                // Bubble assistant ancora vuota → mostro SOLO l'indicatore
+                // Container con min-height stabile per evitare layout shift
+                <div className="flex justify-start mb-4 min-h-[44px]">
+                  {message.processingPhase != null && (
+                    <ProcessingIndicator
+                      phase={message.processingPhase}
+                      visible={true}
+                    />
+                  )}
                 </div>
+              ) : (
+                // Bubble assistant con contenuto
+                <>
+                  <MessageBubble role={message.role} content={message.content} />
+                  {/* Area indicatore con height stabile: resta presente ma invisibile
+                      quando processingPhase diventa null → no layout shift */}
+                  <div className="flex justify-start mb-2 ml-1 min-h-[36px]">
+                    {message.processingPhase != null && (
+                      <ProcessingIndicator
+                        phase={message.processingPhase}
+                        visible={true}
+                      />
+                    )}
+                  </div>
+                  {message.role === "assistant" &&
+                    message.sources &&
+                    message.processingPhase == null && (
+                      <div className="ml-1 -mt-2 mb-4">
+                        <SourceBadges sources={message.sources} />
+                      </div>
+                    )}
+                </>
               )}
             </div>
           ))}
-          {loading && messages[messages.length - 1]?.content === "" && (
-            <div className="flex justify-start mb-4">
-              <div className="bg-gray-200 text-gray-900 px-4 py-3 rounded-lg rounded-bl-none">
-                <div className="flex space-x-2">
-                  <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce delay-100"></div>
-                  <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce delay-200"></div>
-                </div>
-              </div>
-            </div>
-          )}
           <div ref={scrollRef} />
         </div>
       </div>
