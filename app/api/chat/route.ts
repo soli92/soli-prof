@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     let retrievedContext = "";
     let sources: RetrievedSource[] = [];
     try {
-      const ragResult = await queryCorpus("ai_logs", body.userMessage, 15);
+      const ragResult = await queryCorpus("ai_logs", body.userMessage, 25);
       retrievedContext = ragResult.context;
       sources = ragResult.sources;
       console.log(`[RAG] Retrieved ${retrievedContext.length} chars of context, ${sources.length} sources`);
