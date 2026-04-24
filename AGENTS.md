@@ -486,3 +486,17 @@ npm run build
 ---
 
 **Ultimo aggiornamento**: Aprile 2026 — `/admin` + cookie session, **`/api/rag/ingest-stream`** con UI per corpus (`corpusRuns`), hook **`use-ingest-stream`** (fase **`complete`** a fine stream), buffer SSE sources in **`chat-view`**, **`ProcessingIndicator`**, chat su **`queryCorpus`** (`lib/rag-service`), Vitest su `lib/` + `hooks/`
+
+---
+
+## Known edge cases & gotchas
+
+- **SSE ingest da browser: no `EventSource`**: per `/api/rag/ingest-stream` lato client non basta `EventSource`, perché serve una `POST` con body; il flusso va letto via `fetch` + `ReadableStream` parser. Vedi AI_LOG Fase 6 (commit `fb4e5d2`, `55edbbc`).
+
+- **Chat deve degradare senza RAG**: in `app/api/chat/route.ts` il retrieve RAG è in fallback silenzioso, per evitare 500 quando vector store/env non sono disponibili. Se si rimuove questo comportamento, la chat può rompersi per guasti temporanei del layer RAG (fix `2001d4a`, consolidato `9ba4c05`).
+
+- **Runtime route chat: `nodejs` + `maxDuration`**: la route chat combina streaming SSE e chiamate esterne legate al retrieval; è documentato l'uso di runtime Node con `maxDuration` 60 per stabilità operativa. Prima di cambiare runtime/timeout, verifica i vincoli in AI_LOG Fase 4.
+
+- **Next 16: non reintrodurre `swcMinify`**: questa opzione è stata rimossa per deprecazione; reintrodurla in `next.config.ts` riporta warning/build noise evitabile. Fix: `0dd5060`.
+
+- **`@anthropic-ai/sdk` deve restare dipendenza diretta**: è già successo che mancasse nel manifest; il runtime della chat dipende esplicitamente da questo pacchetto. Se viene rimosso o reso solo transitivo, l'API chat rischia failure in build/run (fix `baacbc4`).
