@@ -1,69 +1,89 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  ADMIN_COOKIE_NAME,
+  createAdminSession,
+  verifyAdminSession,
+  revokeAdminSession,
+  countActiveSessions,
+  buildSessionCookieOptions,
+} from "./admin-session";
 
-describe("admin-session", () => {
+const TEST_SECRET = "test-secret-at-least-32-chars-long-xx";
+
+describe("admin-session (stateless HMAC)", () => {
   beforeEach(() => {
-    vi.resetModules();
+    vi.stubEnv("ADMIN_SESSION_SECRET", TEST_SECRET);
   });
 
-  it("exports ADMIN_COOKIE_NAME", async () => {
-    const m = await import("./admin-session");
-    expect(m.ADMIN_COOKIE_NAME).toBe("sp_admin_session");
-  });
-
-  it("createAdminSession returns 64-char lowercase hex", async () => {
-    const m = await import("./admin-session");
-    const token = m.createAdminSession();
-    expect(token).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it("verifyAdminSession is false for missing or unknown token", async () => {
-    const m = await import("./admin-session");
-    expect(m.verifyAdminSession(undefined)).toBe(false);
-    expect(m.verifyAdminSession(null)).toBe(false);
-    expect(m.verifyAdminSession("")).toBe(false);
-    expect(m.verifyAdminSession("not-a-valid-session-token")).toBe(false);
-  });
-
-  it("create → verify → revoke lifecycle", async () => {
-    const m = await import("./admin-session");
-    const token = m.createAdminSession();
-    expect(m.verifyAdminSession(token)).toBe(true);
-    m.revokeAdminSession(token);
-    expect(m.verifyAdminSession(token)).toBe(false);
-  });
-
-  it("countActiveSessions tracks created sessions", async () => {
-    const m = await import("./admin-session");
-    expect(m.countActiveSessions()).toBe(0);
-    m.createAdminSession();
-    expect(m.countActiveSessions()).toBe(1);
-    m.createAdminSession();
-    expect(m.countActiveSessions()).toBe(2);
-  });
-
-  it("verifyAdminSession removes expired token", async () => {
-    vi.useFakeTimers();
-    const m = await import("./admin-session");
-    const token = m.createAdminSession();
-    expect(m.verifyAdminSession(token)).toBe(true);
-    vi.advanceTimersByTime(61 * 60 * 1000);
-    expect(m.verifyAdminSession(token)).toBe(false);
-    expect(m.verifyAdminSession(token)).toBe(false);
-    vi.useRealTimers();
-  });
-
-  it("buildSessionCookieOptions sets cookie flags", async () => {
-    const m = await import("./admin-session");
-    vi.stubEnv("NODE_ENV", "development");
-    const devOpts = m.buildSessionCookieOptions(1800);
-    expect(devOpts.httpOnly).toBe(true);
-    expect(devOpts.sameSite).toBe("strict");
-    expect(devOpts.path).toBe("/");
-    expect(devOpts.maxAge).toBe(1800);
-    expect(devOpts.secure).toBe(false);
-
-    vi.stubEnv("NODE_ENV", "production");
-    expect(m.buildSessionCookieOptions().secure).toBe(true);
+  afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("ADMIN_COOKIE_NAME is unchanged", () => {
+    expect(ADMIN_COOKIE_NAME).toBe("sp_admin_session");
+  });
+
+  it("crea un token con formato payload.signature", () => {
+    const token = createAdminSession();
+    expect(token).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+  });
+
+  it("verifica un token appena creato", () => {
+    const token = createAdminSession();
+    expect(verifyAdminSession(token)).toBe(true);
+  });
+
+  it("rifiuta un token tampered", () => {
+    const token = createAdminSession();
+    const tampered = token.slice(0, -1) + "X";
+    expect(verifyAdminSession(tampered)).toBe(false);
+  });
+
+  it("rifiuta un token scaduto", () => {
+    const expired = createAdminSession(-1000);
+    expect(verifyAdminSession(expired)).toBe(false);
+  });
+
+  it("rifiuta token malformati", () => {
+    expect(verifyAdminSession(null)).toBe(false);
+    expect(verifyAdminSession("")).toBe(false);
+    expect(verifyAdminSession("no-dot-in-token")).toBe(false);
+    expect(verifyAdminSession("a.b.c")).toBe(false);
+  });
+
+  it("revokeAdminSession è no-op (non lancia)", () => {
+    const token = createAdminSession();
+    expect(() => revokeAdminSession(token)).not.toThrow();
+    expect(verifyAdminSession(token)).toBe(true);
+  });
+
+  it("countActiveSessions ritorna 0 in versione stateless", () => {
+    expect(countActiveSessions()).toBe(0);
+  });
+
+  it("buildSessionCookieOptions è invariata", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const opts = buildSessionCookieOptions();
+    expect(opts.httpOnly).toBe(true);
+    expect(opts.sameSite).toBe("strict");
+    expect(opts.path).toBe("/");
+    expect(opts.maxAge).toBe(3600);
+    expect(opts.secure).toBe(false);
+  });
+
+  it("buildSessionCookieOptions.secure in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(buildSessionCookieOptions().secure).toBe(true);
+  });
+
+  it("verifyAdminSession false quando la firma è per altro secret", () => {
+    const token = createAdminSession();
+    vi.stubEnv("ADMIN_SESSION_SECRET", "other-secret-also-long-enough-abc-");
+    expect(verifyAdminSession(token)).toBe(false);
+  });
+
+  it("createAdminSession throws without ADMIN_SESSION_SECRET", () => {
+    vi.unstubAllEnvs();
+    expect(() => createAdminSession()).toThrow(/Missing ADMIN_SESSION_SECRET/);
   });
 });
