@@ -1,6 +1,6 @@
 /**
  * Wrapper Voyage AI per embeddings.
- * Identico al vecchio lib/rag/embedder.ts, importa errori tipizzati.
+ * Equivalente al vecchio lib/rag/embedder.ts con errori tipizzati.
  */
 
 import { EmbeddingError, MissingEnvError } from "./errors";
@@ -28,7 +28,7 @@ export async function embedTexts(
     const res = await fetch(VOYAGE_API_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

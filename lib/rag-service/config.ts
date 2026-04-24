@@ -6,10 +6,6 @@
 import { MissingEnvError } from "./errors";
 import type { CorpusConfig, CorpusId, RepoTarget } from "./types";
 
-/**
- * Registry dei corpus supportati.
- * Per aggiungere un nuovo corpus: aggiungere l'entry qui + creare tabella SQL.
- */
 export const CORPUS_REGISTRY: Record<CorpusId, CorpusConfig> = {
   ai_logs: {
     id: "ai_logs",
@@ -27,9 +23,6 @@ export const CORPUS_REGISTRY: Record<CorpusId, CorpusConfig> = {
   },
 };
 
-/**
- * Config globale di pipeline.
- */
 export const RAG_CONFIG = {
   embeddingModel: "voyage-3",
   embeddingDimensions: 1024,
@@ -39,10 +32,6 @@ export const RAG_CONFIG = {
   similarityThreshold: 0.20,
 };
 
-/**
- * Repo target per ogni corpus.
- * In futuro questo sarà config remota (DB o file YAML), per ora hardcoded.
- */
 export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {
   ai_logs: [
     { owner: "soli92", repo: "soli-agent", branch: "main" },
@@ -68,9 +57,6 @@ export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {
   ],
 };
 
-/**
- * Legge una env var obbligatoria, throw se mancante.
- */
 export function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value || value.trim() === "") {

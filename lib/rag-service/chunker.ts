@@ -1,6 +1,6 @@
 /**
  * Chunker markdown per heading h2/h3.
- * Logica identica al vecchio lib/rag/chunker.ts ma importa tipi dal nuovo modulo.
+ * Logica equivalente al vecchio lib/rag/chunker.ts, tipi dal nuovo modulo.
  */
 
 import crypto from "crypto";
@@ -37,7 +37,6 @@ export function chunkMarkdown(
   const flush = () => {
     const content = currentContent.join("\n").trim();
     if (!content) return;
-
     const parts = content.length > maxChars ? splitByParagraphs(content, maxChars) : [content];
 
     for (const part of parts) {

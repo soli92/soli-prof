@@ -9,9 +9,9 @@ export type CorpusId = "ai_logs" | "agents_md";
 export interface CorpusConfig {
   id: CorpusId;
   description: string;
-  sourceFileName: string;       // "AI_LOG.md" | "AGENTS.md"
-  supabaseTable: string;         // "rag_ai_logs" | "rag_agents_md"
-  matchFunction: string;         // "match_rag_ai_logs" | "match_rag_agents_md"
+  sourceFileName: string;
+  supabaseTable: string;
+  matchFunction: string;
 }
 
 export interface Chunk {
