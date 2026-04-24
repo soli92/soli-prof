@@ -15,7 +15,7 @@ Chiunque può usare lo stesso setup per avere il proprio tutor personale.
 | Layer | Tecnologia |
 |-------|-----------|
 | **Frontend** | Next.js 16, React 19, TypeScript |
-| **UI** | Tailwind CSS + `@soli92/solids` (design system personale) |
+| **UI** | Tailwind CSS + `@soli92/solids` **^1.7.0** (token / preset); font Google (Inter, DM Sans, JetBrains Mono, famiglie tema) in `app/layout.tsx` come da SoliDS 1.7 |
 | **LLM** | Anthropic Claude Haiku 3.5 (streaming SSE) |
 | **Hosting** | Vercel |
 

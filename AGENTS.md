@@ -16,7 +16,7 @@ Un **AI tutor personale** che risponde a domande di apprendimento con risposte:
 | Layer | Tech |
 |-------|------|
 | **Frontend** | Next.js 16, React 19, TypeScript 5 |
-| **Styling** | Tailwind CSS 3.4 + `@soli92/solids` preset |
+| **Styling** | Tailwind CSS 3.4 + `@soli92/solids` **^1.7.0** preset; font stack in `app/layout.tsx` |
 | **Backend** | Next.js API routes (streaming SSE) |
 | **LLM** | Anthropic Claude Haiku 3.5 |
 | **Deployment** | Vercel (automatico da `main`) |
@@ -370,7 +370,7 @@ vercel --prod  # Richiede VERCEL_TOKEN in .env.local o login interattivo
 
 ## Testing
 
-**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. Pattern **`lib/**/*.test.ts`** e **`hooks/**/*.test.ts`**: **`lib/rag-service/*.test.ts`** (chunker, config, errori), **`lib/admin-session.test.ts`** (sessioni admin / cookie options), **`hooks/use-ingest-stream.test.ts`** (reducer multi-corpus `ingestCorpusRunsReducer`, `deriveIngestAggregates`).
+**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. Pattern **`lib/**/*.test.ts`** e **`hooks/**/*.test.ts`**: **`lib/rag-service/*.test.ts`** (chunker, config, errori), **`lib/admin-session.test.ts`** (sessioni admin / cookie options), **`lib/solids-package.test.ts`** (range **`@soli92/solids` ^1.7.0**), **`hooks/use-ingest-stream.test.ts`** (reducer multi-corpus `ingestCorpusRunsReducer`, `deriveIngestAggregates`).
 
 ```bash
 npm test              # vitest run — CI-friendly

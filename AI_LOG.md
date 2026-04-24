@@ -6,7 +6,7 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 
 ## Overview del progetto
 
-**Soli Prof**: app **Next.js 16** + **React 19** con chat tutor in italiano, streaming SSE da **`/api/chat`**, client **Anthropic** (`@anthropic-ai/sdk`), system prompt in `lib/prompts.ts` e variante **RAG** (`getRAGSystemPrompt`), UI con **@soli92/solids**. **RAG** su **Supabase + pgvector**: ingest da GitHub (Contents API), chunking markdown, embedding **Voyage AI** (HTTP), SQL `sql/001_pgvector_setup.sql`. **`lib/rag-service/`** è il percorso attivo per **query** nella chat (`queryCorpus("ai_logs", …, topK=25)`) e per ingest/query HTTP; **`lib/rag/`** resta codice legacy di riferimento. CLI `npm run rag:ingest` con corpus opzionale; HTTP **`POST /api/rag/query`**, **`POST /api/rag/ingest`**, **`POST /api/rag/ingest-stream`** (SSE + `onProgress`). **Admin**: pagina **`/admin`**, `ADMIN_PAGE_PASSWORD`, cookie **`sp_admin_session`** (`lib/admin-session.ts`), UI ingest **`components/admin/*`** + hook **`hooks/use-ingest-stream.ts`** (stato **`corpusRuns`** per ingest `all`, reducer puro **`ingestCorpusRunsReducer`** testato in **`hooks/use-ingest-stream.test.ts`**). **Chat**: parsing sources su **buffer accumulato** in `components/chat-view.tsx` se il blocco `__SOURCES__` supera la dimensione tipica di un chunk SSE. **Vitest**: `lib/**/*.test.ts`, `hooks/**/*.test.ts`, `npm test`. Documentazione (`WEEKLY_LOG.md`, `SETUP_GUIDE.md`, `AGENTS.md`, `AGENT.md`, questo file) e CI verso Vercel.
+**Soli Prof**: app **Next.js 16** + **React 19** con chat tutor in italiano, streaming SSE da **`/api/chat`**, client **Anthropic** (`@anthropic-ai/sdk`), system prompt in `lib/prompts.ts` e variante **RAG** (`getRAGSystemPrompt`), UI con **@soli92/solids ^1.7.0** (font in `app/layout.tsx`, test `lib/solids-package.test.ts`). **RAG** su **Supabase + pgvector**: ingest da GitHub (Contents API), chunking markdown, embedding **Voyage AI** (HTTP), SQL `sql/001_pgvector_setup.sql`. **`lib/rag-service/`** è il percorso attivo per **query** nella chat (`queryCorpus("ai_logs", …, topK=25)`) e per ingest/query HTTP; **`lib/rag/`** resta codice legacy di riferimento. CLI `npm run rag:ingest` con corpus opzionale; HTTP **`POST /api/rag/query`**, **`POST /api/rag/ingest`**, **`POST /api/rag/ingest-stream`** (SSE + `onProgress`). **Admin**: pagina **`/admin`**, `ADMIN_PAGE_PASSWORD`, cookie **`sp_admin_session`** (`lib/admin-session.ts`), UI ingest **`components/admin/*`** + hook **`hooks/use-ingest-stream.ts`** (stato **`corpusRuns`** per ingest `all`, reducer puro **`ingestCorpusRunsReducer`** testato in **`hooks/use-ingest-stream.test.ts`**). **Chat**: parsing sources su **buffer accumulato** in `components/chat-view.tsx` se il blocco `__SOURCES__` supera la dimensione tipica di un chunk SSE. **Vitest**: `lib/**/*.test.ts`, `hooks/**/*.test.ts`, `npm test`. Documentazione (`WEEKLY_LOG.md`, `SETUP_GUIDE.md`, `AGENTS.md`, `AGENT.md`, questo file) e CI verso Vercel.
 
 **Stack AI usato (inferito; aggiornato 2026-04-22)**: **Cursor / assistente LLM** per scaffold, doc e implementazione RAG (serie `feat(rag):` con Step A ripetuti poi consolidati). Runtime tutor: **Anthropic** + contesto recuperato (`lib/rag/retrieve.ts`, `topK=15` in `9ba4c05`). Embeddings: **Voyage** (`VOYAGE_API_KEY`, `lib/rag/embedder.ts`). Vector store: **Supabase** + **pgvector** (`@supabase/supabase-js`, RPC/search in `lib/rag/store.ts`). *Modello IDE esatto non desumibile.*
 
@@ -144,6 +144,12 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 - **Re-ingest Tutto (`corpus: all`)**: il vecchio hook trattava tutto come un’unica lista repo; il primo evento `complete` chiudeva la fase globale e i repo del secondo corpus sovrascrivevano quelli del primo se con stesso nome. Ora **`corpusRuns[]`** + **`ingestCorpusRunsReducer`** (e test Vitest) separano ogni `start`…`complete`; **`phase === "complete"`** globale solo a **chiusura stream**.
 - **Sources in chat**: marker `__SOURCES__`…`__END_SOURCES__` spezzato su più chunk non va più parsato con regex per singolo chunk (testo marker visibile); si usa **buffer cumulativo** + `continue` finché il blocco non è completo.
 
+### Fase 7 — Bump @soli92/solids 1.7.0, font stack, test dipendenza (2026-04-24)
+
+**Cosa è stato fatto**: dipendenza **`@soli92/solids` ^1.7.0**; link **Google Fonts** in `app/layout.tsx`; rimosso `scroll-behavior: smooth` globale da `app/globals.css` (delegato al base layer SoliDS con `prefers-reduced-motion`); **`lib/solids-package.test.ts`** in Vitest; README / AGENTS / AI_LOG aggiornati.
+
+**Lezioni**: allineare le app consumer alla stessa major-minor del DS riduce drift visivo (font non scaricate → fallback sistema).
+
 ---
 
 ## Pattern ricorrenti identificati
@@ -166,7 +172,7 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 - **RAG / dati**: Supabase (pgvector), `@supabase/supabase-js`, SQL in `sql/001_pgvector_setup.sql`
 - **Embeddings**: Voyage AI API (`lib/rag/embedder.ts`, `VOYAGE_API_KEY` in `.env.example`)
 - **Ingest**: GitHub Contents API (legacy `lib/rag/github.ts`; nuovo `lib/rag-service/github.ts`), CLI `npm run rag:ingest` → `scripts/rag-ingest.ts` (corpus opzionale)
-- **Test**: Vitest (`npm test`), file `lib/**/*.test.ts` e `hooks/**/*.test.ts`
+- **Test**: Vitest (`npm test`), file `lib/**/*.test.ts` e `hooks/**/*.test.ts` (incluso **`lib/solids-package.test.ts`** per range SoliDS)
 
 ---
 
@@ -232,7 +238,7 @@ Estratto HEAD→radice (in cima i più recenti): prima blocco **RAG**, poi scaff
 
 ---
 
-> **Nota metodologica**: ultimo aggiornamento manuale **2026-04-24** (post Fase 6 + fix `corpusRuns` / buffer sources + test `hooks/use-ingest-stream.test.ts`); le parti *[inferito]* vanno validate dal maintainer.
+> **Nota metodologica**: ultimo aggiornamento manuale **2026-04-24** (Fase 7 SoliDS 1.7 + post Fase 6 `corpusRuns` / buffer sources + test `hooks/use-ingest-stream.test.ts`); le parti *[inferito]* vanno validate dal maintainer.
 
 ---
 

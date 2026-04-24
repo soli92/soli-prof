@@ -2,9 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-html {
-  scroll-behavior: smooth;
-}
+/* scroll-behavior / reduced-motion: gestiti da @soli92/solids base.css */
 
 ::-webkit-scrollbar {
   width: 8px;
