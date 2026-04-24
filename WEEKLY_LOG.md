@@ -114,6 +114,41 @@ Documentazione settimanale del percorso di apprendimento AI engineering.
 ## Settimana 2: [TBD]
 Spazio per prossime scoperte...
 
+## Settimana 3: Knowledge base RAG, chunker e hardening (24 aprile 2026)
+
+Pivot: Soli Prof non è più solo un tutor, ma anche una knowledge base RAG personale accessibile via API anche da Soli Agent. Focus oggi: consolidare qualità retrieval + UX admin + robustezza produzione.
+
+### 🎯 Obiettivi
+- ✅ Pulizia architetturale (rimuovere lib/rag/ vecchio post-migrazione)
+- ✅ Chunker più fine per liste markdown (pattern contextual retrieval)
+- ✅ Ridurre hallucination su query generiche
+- ✅ Ridurre rumore visivo nei badge sources
+- ✅ Fix bug rendering marker SSE
+- ✅ Fix bug admin "Re-ingest Tutto"
+
+### 📝 Cosa è stato fatto
+
+#### Pulizia architetturale
+- Rimosso `lib/rag/` vecchio (7 file morti post-migrazione a `lib/rag-service`) — `8e7d00b`
+- `tsconfig.tsbuildinfo` rimosso dal tracking git (era committato per errore) — `8e7d00b`
+- `.gitignore` ripulito dai duplicati — `17b7cab`
+
+#### Chunker contextual retrieval
+- Split bullet list markdown con soglie: >=3 item e ogni item >=50 char
+- Preambolo della sezione padre incluso come prefisso in ogni chunk split
+- Pattern ispirato a "Contextual Retrieval" di Anthropic (sett 2024)
+- Edge case coperti: bullet multi-paragrafo, liste miste ordered+unordered, bullet >maxChars splittati da splitByParagraphs
+- 36 test automatici (+8 nuovi)
+- Script dry-run su 12 repo prima del re-ingest reale
+- Risultato: 98→231 chunk ai_logs, 143→259 chunk agents_md (ratio 2.36x/1.81x)
+- Implementazione chunker — `16ddc42`
+
+#### Retrieval, prompt, SSE e admin
+- Regola anti-forcing per domande generiche — `6c3c4fa`
+- Soglia similarity asimmetrica context vs sources — `a6a0dea`
+- Parser sources SSE a buffer accumulativo — `1c1d180`
+- Re-ingest "Tutto": entrambi i corpus distinti in UI — `c754f6e`
+
 ---
 
 ## Note generali
