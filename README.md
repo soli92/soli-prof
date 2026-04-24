@@ -47,7 +47,9 @@ npm install
 cp .env.example .env.local
 ```
 
-Compila `.env.local`:
+Compila `.env.local` partendo da **`.env.example`** (Anthropic, Supabase/Voyage se usi RAG, `RAG_API_KEY`, e **`ADMIN_PAGE_PASSWORD`** se usi **`/admin`** in locale).
+
+Minimo solo chat:
 
 ```env
 ANTHROPIC_API_KEY=sk-ant-your-key-here
@@ -115,14 +117,24 @@ Dettagli: vedi [WEEKLY_LOG.md](./WEEKLY_LOG.md).
 ```
 soli-prof/
 ├── app/
-│   ├── api/chat/route.ts      # Endpoint POST con streaming
+│   ├── admin/page.tsx         # Area admin (re-ingest KB) — richiede ADMIN_PAGE_PASSWORD
+│   ├── api/
+│   │   ├── chat/route.ts      # Chat streaming + RAG (lib/rag-service)
+│   │   ├── admin/verify-password/route.ts
+│   │   └── rag/
+│   │       ├── query, ingest, ingest-stream   # RAG HTTP (+ SSE progress su ingest-stream)
 │   ├── page.tsx               # Chat principale
 │   ├── layout.tsx             # Metadati e setup
 │   └── globals.css            # Stili globali
 ├── components/
-│   ├── chat-view.tsx          # Componente chat (state, input)
+│   ├── chat-view.tsx          # Chat (SSE, indicator, sources)
+│   ├── admin/                  # Pannello ingest + progress repo
 │   └── message-bubble.tsx     # Bubble messaggi
+├── hooks/
+│   └── use-ingest-stream.ts   # Client SSE verso ingest-stream (cookie)
 ├── lib/
+│   ├── admin-session.ts       # Sessioni cookie admin (server)
+│   ├── rag-service/           # Multi-corpus ingest/query
 │   ├── anthropic.ts           # Client Anthropic
 │   └── prompts.ts             # System prompt del tutor
 ├── package.json               # Dependencies
@@ -141,6 +153,9 @@ npm run build
 
 # Type check
 npm run type-check
+
+# Test unitari (Vitest — rag-service + admin-session)
+npm test
 
 # Lint
 npm run lint

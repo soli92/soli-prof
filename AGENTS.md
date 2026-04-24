@@ -35,23 +35,34 @@ Un **AI tutor personale** che risponde a domande di apprendimento con risposte:
 ```
 soli-prof/
 ├── app/
+│   ├── admin/
+│   │   └── page.tsx               # /admin — gate password + IngestPanel (re-ingest KB)
 │   ├── api/
+│   │   ├── admin/
+│   │   │   └── verify-password/route.ts  # POST — verifica ADMIN_PAGE_PASSWORD, cookie sp_admin_session
 │   │   ├── chat/
-│   │   │   └── route.ts           # POST /api/chat — streaming SSE (RAG via lib/rag legacy)
+│   │   │   └── route.ts           # POST /api/chat — streaming SSE (RAG via queryCorpus → lib/rag-service)
 │   │   └── rag/
 │   │       ├── query/route.ts     # POST /api/rag/query — retrieval multi-corpus (x-api-key)
-│   │       └── ingest/route.ts    # POST /api/rag/ingest — indicizzazione (x-api-key + x-admin-confirm)
-│   ├── page.tsx                   # Pagina home
+│   │       ├── ingest/route.ts    # POST /api/rag/ingest — indicizzazione sync (x-api-key + x-admin-confirm)
+│   │       └── ingest-stream/route.ts  # POST SSE — stesso ingest con eventi per-repo (cookie admin OPPURE x-api-key)
+│   ├── page.tsx                   # Pagina home (chat)
 │   ├── layout.tsx                 # Root layout + metadati
 │   └── globals.css                # Stili globali
 ├── components/
-│   ├── chat-view.tsx              # Componente chat (state, logica, input)
-│   └── message-bubble.tsx         # Visualizzazione messaggi
+│   ├── admin/                     # UI ingest: ingest-panel, phase-indicator, repo-progress-row
+│   ├── chat-view.tsx              # Componente chat (state, SSE, ProcessingIndicator, sources)
+│   ├── message-bubble.tsx         # Visualizzazione messaggi
+│   ├── processing-indicator.tsx   # Fasi searching / writing (anti-flicker)
+│   └── source-badges.tsx          # Badge sorgenti RAG post-risposta
+├── hooks/
+│   └── use-ingest-stream.ts       # Client: fetch POST + parse SSE ingest (credentials: include)
 ├── lib/
+│   ├── admin-session.ts           # Sessioni in-memory + cookie httpOnly (TTL 1h)
 │   ├── anthropic.ts               # Client Anthropic (init, config)
 │   ├── prompts.ts                 # System prompt del tutor (+ variant RAG)
-│   ├── rag/                       # Modulo RAG legacy usato da /api/chat (retrieve)
-│   └── rag-service/               # Modulo RAG multi-corpus (ingest, query, barrel index.ts)
+│   ├── rag/                       # Modulo RAG legacy (non usato dalla chat principale; retain per riferimento)
+│   └── rag-service/               # Modulo RAG multi-corpus (ingest, query, onProgress SSE, barrel index.ts)
 ├── public/                        # Assets statici (favicon, ecc.)
 ├── .github/
 │   └── workflows/
@@ -202,8 +213,8 @@ Possibile creare funzione `getSystemPrompt(specialization?: string)` per adattar
 ### Due layer
 | Modulo | Uso |
 |--------|-----|
-| **`lib/rag/`** | Legacy: `retrieveContextWithSources` importato da **`app/api/chat/route.ts`**. Non rimuovere finché la chat non viene migrata. |
-| **`lib/rag-service/`** | Nuovo: multi-corpus (`ai_logs`, `agents_md`), ingest, query, errori tipizzati. Import pubblico da **`@/lib/rag-service`** (barrel `index.ts`). |
+| **`lib/rag/`** | Legacy (retrieve/config/chunker ecc.): mantenuto in repo; la **chat** usa **`queryCorpus`** da **`lib/rag-service`** (corpus `ai_logs`, `topK` configurato in `app/api/chat/route.ts`). |
+| **`lib/rag-service/`** | Multi-corpus (`ai_logs`, `agents_md`), ingest con **`IngestOptions.onProgress`**, query, errori tipizzati. Import pubblico da **`@/lib/rag-service`** (barrel `index.ts`). |
 
 ### CLI ingest
 ```bash
@@ -223,6 +234,22 @@ Script: `scripts/rag-ingest.ts` (carica `.env.local` via `dotenv`).
 - Body JSON: `{ "corpus": "ai_logs" \| "agents_md" \| "all" }`
 - Risposta: `{ reports: IngestReport[] }` (operazione sincrona, può richiedere minuti)
 
+### POST `/api/rag/ingest-stream` (SSE)
+- **Content-Type** risposta: `text/event-stream` — frame `data: {JSON}\n\n` con `IngestProgressEvent` (`start`, `repo-start`, `repo-fetched`, `repo-chunked`, `repo-done`, `repo-skipped`, `repo-error`, `phase`, `complete`) e sentinella `event: end`.
+- **Auth** (alternativa):
+  1. **Cookie** `sp_admin_session` valido (login da **`POST /api/admin/verify-password`** con `ADMIN_PAGE_PASSWORD`) — niente `x-api-key` né `x-admin-confirm` nel browser.
+  2. **Oppure** `x-api-key: <RAG_API_KEY>` + **`x-admin-confirm: yes`** (CLI, script, integrazioni esterne).
+- Body JSON: come ingest REST (`corpus` singolo o `"all"`).
+
+---
+
+## Admin panel (`/admin`)
+
+- **UI**: `app/admin/page.tsx` — form password; dopo OK mostra **`IngestPanel`** (`components/admin/ingest-panel.tsx`) con tre azioni corpus e progress real-time via **`hooks/use-ingest-stream.ts`** (`fetch` POST + `ReadableStream`, `credentials: "include"`).
+- **Login**: `POST /api/admin/verify-password` con body `{ "password": string }` — confronto server-side con **`ADMIN_PAGE_PASSWORD`**; se ok crea token in **`lib/admin-session.ts`** (Map in-memory, TTL 1h) e imposta cookie **httpOnly** `sp_admin_session` (`SameSite=Strict`, `Secure` in produzione).
+- **Logout** (UI): solo stato React; il cookie resta fino a scadenza — eventuale revoca server esplicita non è ancora esposta come route dedicata.
+- **Ingest da browser**: dopo login, il pannello chiama **`/api/rag/ingest-stream`**; non esporre **`RAG_API_KEY`** nel client.
+
 ---
 
 ## Variabili d'ambiente
@@ -234,7 +261,8 @@ Script: `scripts/rag-ingest.ts` (carica `.env.local` via `dotenv`).
 - `VOYAGE_API_KEY` — Embeddings (Voyage)
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — Supabase pgvector
 - `GITHUB_TOKEN` — Lettura repo per ingest (Contents API)
-- `RAG_API_KEY` — Protegge `/api/rag/query` e `/api/rag/ingest` (stesso valore in header `x-api-key`)
+- `RAG_API_KEY` — Protegge `/api/rag/query`, `/api/rag/ingest` e (se non si usa il cookie admin) **`/api/rag/ingest-stream`** (stesso valore in header `x-api-key`)
+- `ADMIN_PAGE_PASSWORD` — Protegge il gate **`/admin`** e alimenta il cookie di sessione via `verify-password` (generazione suggerita: `openssl rand -base64 24`)
 
 Vedi `.env.example` per i placeholder.
 
@@ -268,7 +296,7 @@ npm run dev
 - Gestione state messaggi (useState)
 - Input form e submit handler
 - Fetch POST /api/chat
-- Streaming reader per accumulare risposta
+- Streaming reader per accumulare risposta; parsing marker **`__SOURCES__`** / **`[DONE]`**; fasi **`processingPhase`** (`searching` → `writing`) con **`ProcessingIndicator`**
 - Scroll automatico
 
 **Hook usati:**
@@ -341,7 +369,7 @@ vercel --prod  # Richiede VERCEL_TOKEN in .env.local o login interattivo
 
 ## Testing
 
-**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. I file di test vivono accanto al codice: `lib/**/*.test.ts` (oggi: `lib/rag-service/*.test.ts` per chunker, config, errori).
+**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. I file di test vivono sotto `lib/**/*.test.ts`: **`lib/rag-service/*.test.ts`** (chunker, config, errori) e **`lib/admin-session.test.ts`** (sessioni admin / cookie options).
 
 ```bash
 npm test              # vitest run — CI-friendly
@@ -456,4 +484,4 @@ npm run build
 
 ---
 
-**Ultimo aggiornamento**: Aprile 2026 (RAG multi-corpus, Vitest, API `/api/rag/*`)
+**Ultimo aggiornamento**: Aprile 2026 — `/admin` + cookie session, **`/api/rag/ingest-stream`**, hook **`use-ingest-stream`**, **`ProcessingIndicator`** in chat, chat su **`queryCorpus`** (`lib/rag-service`), Vitest esteso
