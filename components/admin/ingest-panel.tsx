@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useIngestStream } from "@/hooks/use-ingest-stream";
+import { useIngestStream, type CorpusId } from "@/hooks/use-ingest-stream";
 import { RepoProgressRow } from "./repo-progress-row";
 import { PhaseIndicator } from "./phase-indicator";
 
@@ -38,9 +38,14 @@ const CORPUS_BUTTONS: CorpusButton[] = [
   },
 ];
 
+function corpusLabel(corpus: CorpusId): string {
+  return corpus === "ai_logs" ? "AI_LOG" : "AGENTS.md";
+}
+
 export function IngestPanel() {
   const {
     phase,
+    corpusRuns,
     repos,
     totalChunks,
     elapsedMs,
@@ -66,6 +71,9 @@ export function IngestPanel() {
   const totalChunksDone = repos
     .filter((r) => r.status === "done")
     .reduce((sum, r) => sum + (r.chunks ?? 0), 0);
+
+  const expectedRepoCount = corpusRuns.reduce((sum, run) => sum + run.totalRepos, 0);
+  const doneRepoCount = repos.filter((r) => r.status === "done").length;
 
   return (
     <div className="space-y-6">
@@ -135,34 +143,60 @@ export function IngestPanel() {
             </div>
           )}
 
-          {/* Lista repo */}
-          {repos.length > 0 && (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-                <h3 className="text-sm font-medium text-gray-700">
-                  Repository ({repos.length})
-                </h3>
+          {corpusRuns.length > 0 &&
+            corpusRuns.map((run, runIdx) => (
+              <div
+                key={`${run.corpus}-${runIdx}`}
+                className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4"
+              >
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex justify-between items-center gap-2">
+                  <h3 className="text-sm font-medium text-gray-700">
+                    {corpusLabel(run.corpus)} ({run.repos.length} / {run.totalRepos})
+                  </h3>
+                  {run.phase === "complete" &&
+                    run.totalChunks !== undefined &&
+                    run.elapsedMs !== undefined && (
+                      <span className="text-xs text-gray-500 shrink-0">
+                        {run.totalChunks} chunk · {(run.elapsedMs / 1000).toFixed(1)}s
+                      </span>
+                    )}
+                  {run.phase === "embedding" && (
+                    <span className="text-xs text-blue-600 shrink-0">🧮 Embedding</span>
+                  )}
+                  {run.phase === "upserting" && (
+                    <span className="text-xs text-blue-600 shrink-0">💾 Upserting</span>
+                  )}
+                  {run.phase === "running" && (
+                    <span className="text-xs text-gray-500 shrink-0">In corso…</span>
+                  )}
+                  {run.phase === "error" && (
+                    <span className="text-xs text-red-600 shrink-0">Errore</span>
+                  )}
+                </div>
+                <div>
+                  {run.repos.map((r) => (
+                    <RepoProgressRow key={r.repo} progress={r} />
+                  ))}
+                </div>
               </div>
-              <div>
-                {repos.map((r) => (
-                  <RepoProgressRow key={r.repo} progress={r} />
-                ))}
-              </div>
-            </div>
-          )}
+            ))}
 
-          {/* Placeholder iniziale prima del primo repo-start */}
-          {repos.length === 0 && isRunning && (
+          {corpusRuns.length === 0 && isRunning && (
             <div className="text-sm text-gray-500 bg-gray-50 border border-dashed border-gray-300 rounded p-4">
               Preparazione job…
             </div>
           )}
 
+          {corpusRuns.length > 1 && phase === "complete" && totalChunks !== undefined && elapsedMs !== undefined && (
+            <div className="text-sm text-gray-600 border-t pt-3">
+              Totale: {totalChunks} chunk · {(elapsedMs / 1000).toFixed(1)}s
+            </div>
+          )}
+
           {/* Summary durante running */}
-          {isRunning && repos.length > 0 && (
+          {isRunning && corpusRuns.length > 0 && (
             <div className="text-xs text-gray-500">
-              {repos.filter((r) => r.status === "done").length} di{" "}
-              {repos.length} completati
+              {doneRepoCount} di {expectedRepoCount || repos.length} completati
               {totalChunksDone > 0 && ` · ${totalChunksDone} chunk finora`}
             </div>
           )}

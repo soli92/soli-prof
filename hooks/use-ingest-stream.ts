@@ -1,10 +1,28 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { RepoProgress } from "@/components/admin/repo-progress-row";
 import type { Phase } from "@/components/admin/phase-indicator";
 
 type CorpusChoice = "ai_logs" | "agents_md" | "all";
+
+export type CorpusId = "ai_logs" | "agents_md";
+
+export type CorpusRunPhase =
+  | "running"
+  | "embedding"
+  | "upserting"
+  | "complete"
+  | "error";
+
+export interface CorpusRun {
+  corpus: CorpusId;
+  totalRepos: number;
+  repos: RepoProgress[];
+  totalChunks: number | undefined;
+  elapsedMs: number | undefined;
+  phase: CorpusRunPhase;
+}
 
 // Tipi speculari agli eventi emessi dal backend
 type IngestEvent =
@@ -19,8 +37,91 @@ type IngestEvent =
   | { type: "complete"; corpus: string; totalRepos: number; totalChunks: number; elapsedMs: number }
   | { type: "error"; error: string };
 
+type RepoIngestEvent = Extract<
+  IngestEvent,
+  | { type: "repo-start" }
+  | { type: "repo-fetched" }
+  | { type: "repo-chunked" }
+  | { type: "repo-done" }
+  | { type: "repo-skipped" }
+  | { type: "repo-error" }
+>;
+
+function applyRepoEventToRun(run: CorpusRun, event: RepoIngestEvent): CorpusRun {
+  switch (event.type) {
+    case "repo-start":
+      if (run.repos.some((r) => r.repo === event.repo)) {
+        return {
+          ...run,
+          repos: run.repos.map((r) =>
+            r.repo === event.repo ? { ...r, status: "fetching" } : r
+          ),
+        };
+      }
+      return { ...run, repos: [...run.repos, { repo: event.repo, status: "fetching" }] };
+
+    case "repo-fetched":
+      return {
+        ...run,
+        repos: run.repos.map((r) =>
+          r.repo === event.repo ? { ...r, status: "chunking" } : r
+        ),
+      };
+
+    case "repo-chunked":
+      return {
+        ...run,
+        repos: run.repos.map((r) =>
+          r.repo === event.repo ? { ...r, chunks: event.chunks } : r
+        ),
+      };
+
+    case "repo-done":
+      return {
+        ...run,
+        repos: run.repos.map((r) =>
+          r.repo === event.repo
+            ? { ...r, status: "done", chunks: event.chunks, elapsedMs: event.elapsedMs }
+            : r
+        ),
+      };
+
+    case "repo-skipped":
+      if (run.repos.some((r) => r.repo === event.repo)) {
+        return {
+          ...run,
+          repos: run.repos.map((r) =>
+            r.repo === event.repo ? { ...r, status: "skipped", reason: event.reason } : r
+          ),
+        };
+      }
+      return {
+        ...run,
+        repos: [...run.repos, { repo: event.repo, status: "skipped", reason: event.reason }],
+      };
+
+    case "repo-error":
+      if (run.repos.some((r) => r.repo === event.repo)) {
+        return {
+          ...run,
+          repos: run.repos.map((r) =>
+            r.repo === event.repo ? { ...r, status: "error", error: event.error } : r
+          ),
+        };
+      }
+      return {
+        ...run,
+        repos: [...run.repos, { repo: event.repo, status: "error", error: event.error }],
+      };
+
+    default:
+      return run;
+  }
+}
+
 export interface UseIngestStreamReturn {
   phase: Phase;
+  corpusRuns: CorpusRun[];
   repos: RepoProgress[];
   totalChunks: number | undefined;
   elapsedMs: number | undefined;
@@ -32,9 +133,7 @@ export interface UseIngestStreamReturn {
 
 export function useIngestStream(): UseIngestStreamReturn {
   const [phase, setPhase] = useState<Phase>("idle");
-  const [repos, setRepos] = useState<RepoProgress[]>([]);
-  const [totalChunks, setTotalChunks] = useState<number | undefined>(undefined);
-  const [elapsedMs, setElapsedMs] = useState<number | undefined>(undefined);
+  const [corpusRuns, setCorpusRuns] = useState<CorpusRun[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -42,20 +141,34 @@ export function useIngestStream(): UseIngestStreamReturn {
   const isRunning =
     phase !== "idle" && phase !== "complete" && phase !== "error";
 
+  const repos = useMemo(
+    () => corpusRuns.flatMap((run) => run.repos),
+    [corpusRuns]
+  );
+
+  const totalChunks = useMemo(() => {
+    if (corpusRuns.length === 0) return undefined;
+    if (!corpusRuns.every((r) => r.phase === "complete")) return undefined;
+    return corpusRuns.reduce((sum, r) => sum + (r.totalChunks ?? 0), 0);
+  }, [corpusRuns]);
+
+  const elapsedMs = useMemo(() => {
+    if (corpusRuns.length === 0) return undefined;
+    if (!corpusRuns.every((r) => r.phase === "complete")) return undefined;
+    return corpusRuns.reduce((sum, r) => sum + (r.elapsedMs ?? 0), 0);
+  }, [corpusRuns]);
+
   const reset = useCallback(() => {
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
     setPhase("idle");
-    setRepos([]);
-    setTotalChunks(undefined);
-    setElapsedMs(undefined);
+    setCorpusRuns([]);
     setError(null);
   }, []);
 
   const start = useCallback(async (corpus: CorpusChoice) => {
-    // Cleanup eventuale job precedente
     if (abortRef.current) {
       abortRef.current.abort();
     }
@@ -63,16 +176,14 @@ export function useIngestStream(): UseIngestStreamReturn {
     abortRef.current = controller;
 
     setPhase("starting");
-    setRepos([]);
-    setTotalChunks(undefined);
-    setElapsedMs(undefined);
+    setCorpusRuns([]);
     setError(null);
 
     try {
       const res = await fetch("/api/rag/ingest-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // invia cookie admin
+        credentials: "include",
         body: JSON.stringify({ corpus }),
         signal: controller.signal,
       });
@@ -96,26 +207,28 @@ export function useIngestStream(): UseIngestStreamReturn {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+        }
 
-        buffer += decoder.decode(value, { stream: true });
-
-        // Split per frame SSE (separati da \n\n)
         let idx: number;
         while ((idx = buffer.indexOf("\n\n")) !== -1) {
           const frame = buffer.slice(0, idx);
           buffer = buffer.slice(idx + 2);
           processFrame(frame);
         }
-      }
 
-      // Flush eventuale frame residuo (edge: server chiude senza \n\n finale)
-      if (buffer.trim()) {
-        processFrame(buffer);
+        if (done) {
+          if (buffer.trim()) {
+            processFrame(buffer);
+            buffer = "";
+          }
+          setPhase((currentPhase) => (currentPhase === "error" ? "error" : "complete"));
+          break;
+        }
       }
     } catch (err) {
       if (controller.signal.aborted) {
-        // Abort voluto (reset / unmount): non è un errore
         return;
       }
       const msg = err instanceof Error ? err.message : String(err);
@@ -128,7 +241,6 @@ export function useIngestStream(): UseIngestStreamReturn {
     }
 
     function processFrame(frame: string) {
-      // Un frame SSE può avere righe data: / event: / ecc. Noi usiamo solo data:
       const lines = frame.split("\n");
       for (const line of lines) {
         if (!line.startsWith("data:")) continue;
@@ -147,114 +259,89 @@ export function useIngestStream(): UseIngestStreamReturn {
     function applyEvent(event: IngestEvent) {
       switch (event.type) {
         case "start":
+          setCorpusRuns((prev) => [
+            ...prev,
+            {
+              corpus: event.corpus as CorpusId,
+              totalRepos: event.totalRepos,
+              repos: [],
+              totalChunks: undefined,
+              elapsedMs: undefined,
+              phase: "running",
+            },
+          ]);
           setPhase("fetching-repos");
-          // Non conosciamo ancora i nomi dei repo, popoleremo su repo-start
           break;
 
         case "repo-start":
-          setRepos((prev) => {
-            // Se il repo non è nella lista, aggiungilo in stato fetching
-            if (prev.some((r) => r.repo === event.repo)) {
-              return prev.map((r) =>
-                r.repo === event.repo ? { ...r, status: "fetching" } : r
-              );
-            }
-            return [...prev, { repo: event.repo, status: "fetching" }];
-          });
-          break;
-
         case "repo-fetched":
-          // Transiziona da fetching a chunking
-          setRepos((prev) =>
-            prev.map((r) =>
-              r.repo === event.repo ? { ...r, status: "chunking" } : r
-            )
-          );
-          break;
-
         case "repo-chunked":
-          setRepos((prev) =>
-            prev.map((r) =>
-              r.repo === event.repo
-                ? { ...r, chunks: event.chunks }
-                : r
-            )
-          );
-          break;
-
         case "repo-done":
-          setRepos((prev) =>
-            prev.map((r) =>
-              r.repo === event.repo
-                ? {
-                    ...r,
-                    status: "done",
-                    chunks: event.chunks,
-                    elapsedMs: event.elapsedMs,
-                  }
-                : r
-            )
-          );
-          break;
-
         case "repo-skipped":
-          setRepos((prev) => {
-            if (prev.some((r) => r.repo === event.repo)) {
-              return prev.map((r) =>
-                r.repo === event.repo
-                  ? { ...r, status: "skipped", reason: event.reason }
-                  : r
-              );
-            }
-            return [
-              ...prev,
-              { repo: event.repo, status: "skipped", reason: event.reason },
-            ];
-          });
-          break;
-
         case "repo-error":
-          setRepos((prev) => {
-            if (prev.some((r) => r.repo === event.repo)) {
-              return prev.map((r) =>
-                r.repo === event.repo
-                  ? { ...r, status: "error", error: event.error }
-                  : r
-              );
-            }
-            return [
-              ...prev,
-              { repo: event.repo, status: "error", error: event.error },
-            ];
+          setCorpusRuns((prev) => {
+            if (prev.length === 0) return prev;
+            const lastIdx = prev.length - 1;
+            const lastRun = prev[lastIdx];
+            const updatedRun = applyRepoEventToRun(lastRun, event);
+            return [...prev.slice(0, lastIdx), updatedRun];
           });
           break;
 
         case "phase":
+          setCorpusRuns((prev) => {
+            if (prev.length === 0) return prev;
+            const lastIdx = prev.length - 1;
+            const nextPhase: CorpusRunPhase =
+              event.phase === "embedding" ? "embedding" : "upserting";
+            const updated = { ...prev[lastIdx], phase: nextPhase };
+            return [...prev.slice(0, lastIdx), updated];
+          });
           if (event.phase === "embedding") {
             setPhase("embedding");
-            if (event.totalChunks !== undefined) {
-              setTotalChunks(event.totalChunks);
-            }
           } else if (event.phase === "upserting") {
             setPhase("upserting");
           }
           break;
 
         case "complete":
-          setPhase("complete");
-          setTotalChunks(event.totalChunks);
-          setElapsedMs(event.elapsedMs);
+          setCorpusRuns((prev) => {
+            if (prev.length === 0) return prev;
+            const lastIdx = prev.length - 1;
+            const updated: CorpusRun = {
+              ...prev[lastIdx],
+              phase: "complete",
+              totalChunks: event.totalChunks,
+              elapsedMs: event.elapsedMs,
+            };
+            return [...prev.slice(0, lastIdx), updated];
+          });
           break;
 
         case "error":
           setPhase("error");
           setError(event.error);
+          setCorpusRuns((prev) => {
+            if (prev.length === 0) return prev;
+            const lastIdx = prev.length - 1;
+            return [...prev.slice(0, lastIdx), { ...prev[lastIdx], phase: "error" }];
+          });
           break;
       }
     }
   }, []);
 
-  return { phase, repos, totalChunks, elapsedMs, error, start, reset, isRunning };
+  return {
+    phase,
+    corpusRuns,
+    repos,
+    totalChunks,
+    elapsedMs,
+    error,
+    start,
+    reset,
+    isRunning,
+  };
 }
 
 async function safeReadErrorBody(res: Response): Promise<string | null> {
