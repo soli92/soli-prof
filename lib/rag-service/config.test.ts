@@ -30,8 +30,13 @@ describe("RAG_CONFIG", () => {
   it("keeps embedding and retrieval bounds consistent", () => {
     expect(RAG_CONFIG.embeddingModel).toBe("voyage-3");
     expect(RAG_CONFIG.defaultTopK).toBeLessThanOrEqual(RAG_CONFIG.maxTopK);
-    expect(RAG_CONFIG.similarityThreshold).toBeGreaterThanOrEqual(0);
-    expect(RAG_CONFIG.similarityThreshold).toBeLessThanOrEqual(1);
+    expect(RAG_CONFIG.similarityThresholdForContext).toBeGreaterThanOrEqual(0);
+    expect(RAG_CONFIG.similarityThresholdForContext).toBeLessThanOrEqual(1);
+    expect(RAG_CONFIG.similarityThresholdForSources).toBeGreaterThanOrEqual(0);
+    expect(RAG_CONFIG.similarityThresholdForSources).toBeLessThanOrEqual(1);
+    expect(RAG_CONFIG.similarityThresholdForSources).toBeGreaterThanOrEqual(
+      RAG_CONFIG.similarityThresholdForContext
+    );
   });
 });
 
