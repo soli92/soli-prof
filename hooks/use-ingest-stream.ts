@@ -25,7 +25,7 @@ export interface CorpusRun {
 }
 
 // Tipi speculari agli eventi emessi dal backend
-type IngestEvent =
+export type IngestEvent =
   | { type: "start"; corpus: string; totalRepos: number }
   | { type: "repo-start"; repo: string }
   | { type: "repo-fetched"; repo: string; chars: number }
@@ -46,6 +46,86 @@ type RepoIngestEvent = Extract<
   | { type: "repo-skipped" }
   | { type: "repo-error" }
 >;
+
+/** Riduce lo stato `corpusRuns` in risposta a un evento SSE ingest (puro, testabile). */
+export function ingestCorpusRunsReducer(
+  prev: CorpusRun[],
+  event: IngestEvent
+): CorpusRun[] {
+  switch (event.type) {
+    case "start":
+      return [
+        ...prev,
+        {
+          corpus: event.corpus as CorpusId,
+          totalRepos: event.totalRepos,
+          repos: [],
+          totalChunks: undefined,
+          elapsedMs: undefined,
+          phase: "running",
+        },
+      ];
+
+    case "repo-start":
+    case "repo-fetched":
+    case "repo-chunked":
+    case "repo-done":
+    case "repo-skipped":
+    case "repo-error": {
+      if (prev.length === 0) return prev;
+      const lastIdx = prev.length - 1;
+      const lastRun = prev[lastIdx];
+      const updatedRun = applyRepoEventToRun(lastRun, event);
+      return [...prev.slice(0, lastIdx), updatedRun];
+    }
+
+    case "phase": {
+      if (prev.length === 0) return prev;
+      const lastIdx = prev.length - 1;
+      const nextPhase: CorpusRunPhase =
+        event.phase === "embedding" ? "embedding" : "upserting";
+      return [...prev.slice(0, lastIdx), { ...prev[lastIdx], phase: nextPhase }];
+    }
+
+    case "complete": {
+      if (prev.length === 0) return prev;
+      const lastIdx = prev.length - 1;
+      const updated: CorpusRun = {
+        ...prev[lastIdx],
+        phase: "complete",
+        totalChunks: event.totalChunks,
+        elapsedMs: event.elapsedMs,
+      };
+      return [...prev.slice(0, lastIdx), updated];
+    }
+
+    case "error": {
+      if (prev.length === 0) return prev;
+      const lastIdx = prev.length - 1;
+      return [...prev.slice(0, lastIdx), { ...prev[lastIdx], phase: "error" }];
+    }
+  }
+}
+
+/** Campi derivati per backward-compat (`repos` flat, totali solo se ogni run è `complete`). */
+export function deriveIngestAggregates(corpusRuns: CorpusRun[]): {
+  repos: RepoProgress[];
+  totalChunks: number | undefined;
+  elapsedMs: number | undefined;
+} {
+  const repos = corpusRuns.flatMap((run) => run.repos);
+  if (corpusRuns.length === 0) {
+    return { repos, totalChunks: undefined, elapsedMs: undefined };
+  }
+  if (!corpusRuns.every((r) => r.phase === "complete")) {
+    return { repos, totalChunks: undefined, elapsedMs: undefined };
+  }
+  return {
+    repos,
+    totalChunks: corpusRuns.reduce((sum, r) => sum + (r.totalChunks ?? 0), 0),
+    elapsedMs: corpusRuns.reduce((sum, r) => sum + (r.elapsedMs ?? 0), 0),
+  };
+}
 
 function applyRepoEventToRun(run: CorpusRun, event: RepoIngestEvent): CorpusRun {
   switch (event.type) {
@@ -141,22 +221,10 @@ export function useIngestStream(): UseIngestStreamReturn {
   const isRunning =
     phase !== "idle" && phase !== "complete" && phase !== "error";
 
-  const repos = useMemo(
-    () => corpusRuns.flatMap((run) => run.repos),
+  const { repos, totalChunks, elapsedMs } = useMemo(
+    () => deriveIngestAggregates(corpusRuns),
     [corpusRuns]
   );
-
-  const totalChunks = useMemo(() => {
-    if (corpusRuns.length === 0) return undefined;
-    if (!corpusRuns.every((r) => r.phase === "complete")) return undefined;
-    return corpusRuns.reduce((sum, r) => sum + (r.totalChunks ?? 0), 0);
-  }, [corpusRuns]);
-
-  const elapsedMs = useMemo(() => {
-    if (corpusRuns.length === 0) return undefined;
-    if (!corpusRuns.every((r) => r.phase === "complete")) return undefined;
-    return corpusRuns.reduce((sum, r) => sum + (r.elapsedMs ?? 0), 0);
-  }, [corpusRuns]);
 
   const reset = useCallback(() => {
     if (abortRef.current) {
@@ -259,17 +327,7 @@ export function useIngestStream(): UseIngestStreamReturn {
     function applyEvent(event: IngestEvent) {
       switch (event.type) {
         case "start":
-          setCorpusRuns((prev) => [
-            ...prev,
-            {
-              corpus: event.corpus as CorpusId,
-              totalRepos: event.totalRepos,
-              repos: [],
-              totalChunks: undefined,
-              elapsedMs: undefined,
-              phase: "running",
-            },
-          ]);
+          setCorpusRuns((prev) => ingestCorpusRunsReducer(prev, event));
           setPhase("fetching-repos");
           break;
 
@@ -279,24 +337,11 @@ export function useIngestStream(): UseIngestStreamReturn {
         case "repo-done":
         case "repo-skipped":
         case "repo-error":
-          setCorpusRuns((prev) => {
-            if (prev.length === 0) return prev;
-            const lastIdx = prev.length - 1;
-            const lastRun = prev[lastIdx];
-            const updatedRun = applyRepoEventToRun(lastRun, event);
-            return [...prev.slice(0, lastIdx), updatedRun];
-          });
+          setCorpusRuns((prev) => ingestCorpusRunsReducer(prev, event));
           break;
 
         case "phase":
-          setCorpusRuns((prev) => {
-            if (prev.length === 0) return prev;
-            const lastIdx = prev.length - 1;
-            const nextPhase: CorpusRunPhase =
-              event.phase === "embedding" ? "embedding" : "upserting";
-            const updated = { ...prev[lastIdx], phase: nextPhase };
-            return [...prev.slice(0, lastIdx), updated];
-          });
+          setCorpusRuns((prev) => ingestCorpusRunsReducer(prev, event));
           if (event.phase === "embedding") {
             setPhase("embedding");
           } else if (event.phase === "upserting") {
@@ -305,27 +350,13 @@ export function useIngestStream(): UseIngestStreamReturn {
           break;
 
         case "complete":
-          setCorpusRuns((prev) => {
-            if (prev.length === 0) return prev;
-            const lastIdx = prev.length - 1;
-            const updated: CorpusRun = {
-              ...prev[lastIdx],
-              phase: "complete",
-              totalChunks: event.totalChunks,
-              elapsedMs: event.elapsedMs,
-            };
-            return [...prev.slice(0, lastIdx), updated];
-          });
+          setCorpusRuns((prev) => ingestCorpusRunsReducer(prev, event));
           break;
 
         case "error":
           setPhase("error");
           setError(event.error);
-          setCorpusRuns((prev) => {
-            if (prev.length === 0) return prev;
-            const lastIdx = prev.length - 1;
-            return [...prev.slice(0, lastIdx), { ...prev[lastIdx], phase: "error" }];
-          });
+          setCorpusRuns((prev) => ingestCorpusRunsReducer(prev, event));
           break;
       }
     }

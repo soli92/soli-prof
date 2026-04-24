@@ -56,7 +56,7 @@ soli-prof/
 │   ├── processing-indicator.tsx   # Fasi searching / writing (anti-flicker)
 │   └── source-badges.tsx          # Badge sorgenti RAG post-risposta
 ├── hooks/
-│   └── use-ingest-stream.ts       # Client: fetch POST + parse SSE ingest (credentials: include)
+│   └── use-ingest-stream.ts       # Client: fetch POST + parse SSE ingest; stato per corpus (`corpusRuns`) + derivati
 ├── lib/
 │   ├── admin-session.ts           # Sessioni in-memory + cookie httpOnly (TTL 1h)
 │   ├── anthropic.ts               # Client Anthropic (init, config)
@@ -80,7 +80,7 @@ soli-prof/
 ├── AGENTS.md                       # Questo file (contesto operativo principale)
 ├── AGENT.md                        # Punta qui → AGENTS.md (alias nome singolare)
 ├── AI_LOG.md                      # Memoria sviluppo AI-assisted
-├── vitest.config.ts               # Unit test (lib/**/*.test.ts)
+├── vitest.config.ts               # Unit test (lib/**/*.test.ts, hooks/**/*.test.ts)
 └── LICENSE                        # MIT License
 ```
 
@@ -240,12 +240,13 @@ Script: `scripts/rag-ingest.ts` (carica `.env.local` via `dotenv`).
   1. **Cookie** `sp_admin_session` valido (login da **`POST /api/admin/verify-password`** con `ADMIN_PAGE_PASSWORD`) — niente `x-api-key` né `x-admin-confirm` nel browser.
   2. **Oppure** `x-api-key: <RAG_API_KEY>` + **`x-admin-confirm: yes`** (CLI, script, integrazioni esterne).
 - Body JSON: come ingest REST (`corpus` singolo o `"all"`).
+- Con **`corpus: "all"`** il backend emette **due sequenze** in fila (es. `ai_logs` poi `agents_md`): ogni `start` … `complete` è uno scope distinto. Il client (`useIngestStream`) mantiene un array **`corpusRuns`** e aggiorna solo l’ultimo run su eventi repo/phase/complete; la fase globale **`complete`** passa a fine stream (chiusura `ReadableStream`), non sul primo `complete` JSON.
 
 ---
 
 ## Admin panel (`/admin`)
 
-- **UI**: `app/admin/page.tsx` — form password; dopo OK mostra **`IngestPanel`** (`components/admin/ingest-panel.tsx`) con tre azioni corpus e progress real-time via **`hooks/use-ingest-stream.ts`** (`fetch` POST + `ReadableStream`, `credentials: "include"`).
+- **UI**: `app/admin/page.tsx` — form password; dopo OK mostra **`IngestPanel`** (`components/admin/ingest-panel.tsx`) con tre azioni corpus e progress real-time via **`hooks/use-ingest-stream.ts`** (`fetch` POST + `ReadableStream`, `credentials: "include"`). Il pannello raggruppa i repo **per corpus** (`corpusRuns`); restano esposti anche **`repos`** / **`totalChunks`** / **`elapsedMs`** derivati (flat + somme quando ogni run è `complete`) per compatibilità.
 - **Login**: `POST /api/admin/verify-password` con body `{ "password": string }` — confronto server-side con **`ADMIN_PAGE_PASSWORD`**; se ok crea token in **`lib/admin-session.ts`** (Map in-memory, TTL 1h) e imposta cookie **httpOnly** `sp_admin_session` (`SameSite=Strict`, `Secure` in produzione).
 - **Logout** (UI): solo stato React; il cookie resta fino a scadenza — eventuale revoca server esplicita non è ancora esposta come route dedicata.
 - **Ingest da browser**: dopo login, il pannello chiama **`/api/rag/ingest-stream`**; non esporre **`RAG_API_KEY`** nel client.
@@ -296,7 +297,7 @@ npm run dev
 - Gestione state messaggi (useState)
 - Input form e submit handler
 - Fetch POST /api/chat
-- Streaming reader per accumulare risposta; parsing marker **`__SOURCES__`** / **`[DONE]`**; fasi **`processingPhase`** (`searching` → `writing`) con **`ProcessingIndicator`**
+- Streaming reader per accumulare risposta in **`rawBuffer`**: il blocco **`__SOURCES__`…`__END_SOURCES__`** può essere spezzato su più chunk SSE (~16 KB); finché il marker di chiusura non c’è nel buffer non si appende testo (evita che il JSON sources compaia in chat). Poi **`[DONE]`** / **`[ERROR]`**; fasi **`processingPhase`** (`searching` → `writing`) con **`ProcessingIndicator`**
 - Scroll automatico
 
 **Hook usati:**
@@ -369,7 +370,7 @@ vercel --prod  # Richiede VERCEL_TOKEN in .env.local o login interattivo
 
 ## Testing
 
-**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. I file di test vivono sotto `lib/**/*.test.ts`: **`lib/rag-service/*.test.ts`** (chunker, config, errori) e **`lib/admin-session.test.ts`** (sessioni admin / cookie options).
+**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. Pattern **`lib/**/*.test.ts`** e **`hooks/**/*.test.ts`**: **`lib/rag-service/*.test.ts`** (chunker, config, errori), **`lib/admin-session.test.ts`** (sessioni admin / cookie options), **`hooks/use-ingest-stream.test.ts`** (reducer multi-corpus `ingestCorpusRunsReducer`, `deriveIngestAggregates`).
 
 ```bash
 npm test              # vitest run — CI-friendly
@@ -484,4 +485,4 @@ npm run build
 
 ---
 
-**Ultimo aggiornamento**: Aprile 2026 — `/admin` + cookie session, **`/api/rag/ingest-stream`**, hook **`use-ingest-stream`**, **`ProcessingIndicator`** in chat, chat su **`queryCorpus`** (`lib/rag-service`), Vitest esteso
+**Ultimo aggiornamento**: Aprile 2026 — `/admin` + cookie session, **`/api/rag/ingest-stream`** con UI per corpus (`corpusRuns`), hook **`use-ingest-stream`** (fase **`complete`** a fine stream), buffer SSE sources in **`chat-view`**, **`ProcessingIndicator`**, chat su **`queryCorpus`** (`lib/rag-service`), Vitest su `lib/` + `hooks/`
