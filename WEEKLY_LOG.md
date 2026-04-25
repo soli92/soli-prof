@@ -151,6 +151,58 @@ Pivot: Soli Prof non è più solo un tutor, ma anche una knowledge base RAG pers
 
 ---
 
+## Fix UI: Bottone Invia — Label centrata
+
+### 🎯 Problema riportato
+Il bottone "Invia" nella chat aveva spacing corretto (`px-6 py-3`) ma la **label del testo non era centrata verticalmente**.
+
+### ✅ Soluzione implementata
+
+**File**: `components/chat-view.tsx` — bottone submit
+
+**Prima**:
+```jsx
+<button
+  type="submit"
+  disabled={loading || !input.trim()}
+  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors sd-min-touch-target"
+  aria-label={loading ? "Invio in corso" : "Invia messaggio"}
+>
+  {loading ? "..." : "Invia"}
+</button>
+```
+
+**Dopo**:
+```jsx
+<button
+  type="submit"
+  disabled={loading || !input.trim()}
+  className="flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors sd-min-touch-target"
+  aria-label={loading ? "Invio in corso" : "Invia messaggio"}
+>
+  {loading ? "..." : "Invia"}
+</button>
+```
+
+### 🔧 Cosa è cambiato
+- Aggiunto **`flex items-center justify-center`** al className
+- Questa combinazione Tailwind centra il contenuto **sia verticalmente che orizzontalmente** usando flexbox
+
+### 📚 Lezione appresa
+**Flexbox per bottoni con testo**:
+- `flex` — attiva flexbox su bottone
+- `items-center` — allinea verticalmente (asse cross)
+- `justify-center` — allinea orizzontalmente (asse main)
+
+Questo pattern è **standard** per bottoni con testo/icone e **elimina dipendenze** da line-height ereditato o baseline font diversi.
+
+### 📝 Documentazione
+- Documentazione completa in **`docs/UI_COMPONENTS.md`**
+- AI_LOG.md aggiornato con questa fix nella **Fase 7**
+- Pattern applicabile a tutti i bottoni del progetto
+
+---
+
 ## Note generali
 
 - **Editor**: VS Code + Cursor per agenti AI
