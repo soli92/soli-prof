@@ -6,13 +6,13 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 
 ## Overview del progetto
 
-**Soli Prof**: app **Next.js 16** + **React 19** con chat tutor in italiano, streaming SSE da **`/api/chat`**, client **Anthropic** (`@anthropic-ai/sdk`), system prompt in `lib/prompts.ts` e variante **RAG** (`getRAGSystemPrompt`), UI con **@soli92/solids ^1.7.0** (font in `app/layout.tsx`, test `lib/solids-package.test.ts`). **RAG** su **Supabase + pgvector**: ingest da GitHub (Contents API), chunking markdown, embedding **Voyage AI** (HTTP), SQL `sql/001_pgvector_setup.sql`. **`lib/rag-service/`** è il percorso attivo per **query** nella chat (`queryCorpus("ai_logs", …, topK=25)`) e per ingest/query HTTP; **`lib/rag/`** resta codice legacy di riferimento. CLI `npm run rag:ingest` con corpus opzionale; HTTP **`POST /api/rag/query`**, **`POST /api/rag/ingest`**, **`POST /api/rag/ingest-stream`** (SSE + `onProgress`). **Admin**: pagina **`/admin`**, `ADMIN_PAGE_PASSWORD`, cookie **`sp_admin_session`** (`lib/admin-session.ts`), UI ingest **`components/admin/*`** + hook **`hooks/use-ingest-stream.ts`** (stato **`corpusRuns`** per ingest `all`, reducer puro **`ingestCorpusRunsReducer`** testato in **`hooks/use-ingest-stream.test.ts`**). **Chat**: parsing sources su **buffer accumulato** in `components/chat-view.tsx` se il blocco `__SOURCES__` supera la dimensione tipica di un chunk SSE. **Vitest**: `lib/**/*.test.ts`, `hooks/**/*.test.ts`, `npm test`. Documentazione (`WEEKLY_LOG.md`, `SETUP_GUIDE.md`, `AGENTS.md`, `AGENT.md`, questo file) e CI verso Vercel.
+**Soli Prof**: app **Next.js 16** + **React 19** con chat tutor in italiano, streaming SSE da **`/api/chat`**, client **Anthropic** (`@anthropic-ai/sdk`), system prompt in `lib/prompts.ts` e variante **RAG** (`getRAGSystemPrompt`), UI con **@soli92/solids ^1.7.0** (font in `app/layout.tsx`, test `lib/solids-package.test.ts`). **RAG** su **Supabase + pgvector**: ingest da GitHub (Contents API), chunking markdown, embedding **Voyage AI** (HTTP), SQL `sql/001_pgvector_setup.sql`. **`lib/rag-service/`** è il percorso attivo per **query** nella chat (`queryCorpus("ai_logs", …, topK=25)`) e per ingest/query HTTP; **`lib/rag/`** resta codice legacy di riferimento. CLI `npm run rag:ingest` con corpus opzionale; HTTP **`POST /api/rag/query`**, **`POST /api/rag/ingest`**, **`POST /api/rag/ingest-stream`** (SSE + `onProgress`). **Admin**: pagina **`/admin`**, `ADMIN_PAGE_PASSWORD`, cookie **`sp_admin_session`** (`lib/admin-session.ts`), UI ingest **`components/admin/*`** + hook **`hooks/use-ingest-stream.ts`** (stato **`corpusRuns`** per ingest `all`, reducer puro **`ingestCorpusRunsReducer`** testato in **`hooks/use-ingest-stream.test.ts`**). **Chat**: parsing sources su **buffer accumulato** in `components/chat-view.tsx` se il blocco `__SOURCES__` supera la dimensione tipica di un chunk SSE; bottone invia con **flex layout centrato** (`flex items-center justify-center`). **Vitest**: `lib/**/*.test.ts`, `hooks/**/*.test.ts`, `npm test`. Documentazione (`WEEKLY_LOG.md`, `SETUP_GUIDE.md`, `AGENTS.md`, `AGENT.md`, questo file) e CI verso Vercel.
 
 **Stack AI usato (inferito; aggiornato 2026-04-22)**: **Cursor / assistente LLM** per scaffold, doc e implementazione RAG (serie `feat(rag):` con Step A ripetuti poi consolidati). Runtime tutor: **Anthropic** + contesto recuperato (`lib/rag/retrieve.ts`, `topK=15` in `9ba4c05`). Embeddings: **Voyage** (`VOYAGE_API_KEY`, `lib/rag/embedder.ts`). Vector store: **Supabase** + **pgvector** (`@supabase/supabase-js`, RPC/search in `lib/rag/store.ts`). *Modello IDE esatto non desumibile.*
 
-**Periodo di sviluppo**: 2026-04-22 (`0006c8d` Initial commit) → 2026-04-22 (`9ba4c05` feat(rag): attiva retrieval con topK=15 + prompt rinforzato).
+**Periodo di sviluppo**: 2026-04-22 (`0006c8d` Initial commit) → 2026-04-24 (ultimo refactor RAG multi-corpus e admin).
 
-**Numero di commit**: 85
+**Numero di commit**: 85+
 
 ---
 
@@ -20,31 +20,24 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 
 ### Fase 1 — Initial commit e doppio scaffold Next/SoliDS/Anthropic
 
-**Timeframe**: `0006c8d` → onda `92b40c0`…`5f9aeb5` e onda parallela `dfc425b`…`8c8bf2a` (stesso giorno, messaggi speculari “chore/add” vs “feat/add”).
+**Timeframe**: `0006c8d` → onda `92b40c0`…`5f9aeb5` e onda parallela `dfc425b`…`8c8bf2a` (stesso giorno, messaggi speculari "chore/add" vs "feat/add").
 
 **Cosa è stato fatto**: `package.json` con Next 16, SoliDS, Anthropic; `.npmrc` per GitHub Packages; template env; gitignore; tsconfig/tailwind/postcss/next; `prompts.ts`, `anthropic.ts`, componenti chat, route streaming, layout/page, README/weekly log, MIT.
 
 **Evidenza di AI-assist** (inferita):
 
-- **Alta**: duplicazione funzionale tra serie `chore:`/`feat:`/`config:` che toccano gli stessi layer (es. più commit “add chat API route with streaming” e varianti).
-- Commit finali `36632b2` / `2636626` citano **“scaffolding batch”** — ammissione implicita di generazione massiva seguita da refactor mancanti.
+- **Alta**: duplicazione funzionale tra serie `chore:`/`feat:`/`config:` che toccano gli stessi layer (es. più commit "add chat API route with streaming" e varianti).
+- Commit finali `36632b2` / `2636626` citano **"scaffolding batch"** — ammissione implicita di generazione massiva seguita da refactor mancanti.
 
 **Decisioni architetturali notevoli**:
 
 - **App Router** Next con route `app/api/chat/route.ts` per streaming.
-- **SoliDS** come preset Tailwind (`3968f53`, `2d1a6ef` duplicato concettuale).
-
-**Prompt chiave usati**
-
-> **Prompt [inferito]**: "Scaffold Next.js 16 + React 19 + Tailwind preset SoliDS, route `app/api/chat` con streaming SSE verso Anthropic, componenti `chat-view` e `message-bubble`, `lib/prompts.ts` con system prompt tutor in italiano."
-> *Evidenza*: commit paralleli `61cc0b5`/`7f087aa`, `ad63e64`, file `lib/prompts.ts` (contenuto esplicito ruolo tutor), messaggi *scaffolding batch* `2636626`.
-
-> **Prompt [inferito]**: Nessun prompt specifico desumibile oltre l’inferenza sopra; la duplicazione commit suggerisce **due passate** di generazione o merge manuale.
+- **SoliDS** come preset Tailwind.
 
 **Lezioni apprese**
 
-- Doppio scaffold lascia **refactor incompleti** finché non si normalizza il tree (`36632b2`, `2636626`).
-- `.npmrc` iniziale verso GitHub Packages diventa **debito** se `@soli92/solids` è pubblico su npm — richiede sweep su README/SETUP/AGENTS (serie commit `46d08f4`…).
+- Doppio scaffold lascia **refactor incompleti** finché non si normalizza il tree.
+- `.npmrc` iniziale verso GitHub Packages diventa **debito** se `@soli92/solids` è pubblico su npm.
 
 ### Fase 2 — Documentazione operativa e CI
 
@@ -52,208 +45,106 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 
 **Cosa è stato fatto**: narrativa README, log settimanale, contesto per assistenti AI in `AGENTS.md`, pipeline CI/CD, `SETUP_GUIDE.md`.
 
-**Evidenza di AI-assist** (inferita):
-
-- Struttura “learning in public” + `AGENTS.md` allineata all’ecosistema soli92 (pattern visto in altri repo).
-
 **Decisioni architetturali notevoli**:
 
 - Trattare **AGENTS.md** come manuale operativo per tool/agenti che lavorano sul repo.
 
-**Prompt chiave usati**
-
-> **Prompt [inferito]**: "Scrivi README narrativo, WEEKLY_LOG settimana 1, AGENTS per assistenti AI, SETUP_GUIDE passo-passo, LICENSE MIT, GitHub Actions CI/CD e deploy Vercel."
-> *Evidenza*: `45828ff`, `7132fbe`, `90fc89b`, `eb2343e`, `92674ab`, `96b612a`.
-
 **Lezioni apprese**
 
-- **AGENTS.md** allineato al resto dell’ecosistema soli92 riduce attrito per Cursor/Soli Agent (`90fc89b`).
-- CI/CD documentata insieme al codice evita segreti sparsi solo in chat (`f66949c`, `92674ab`).
+- **AGENTS.md** allineato al resto dell'ecosistema soli92 riduce attrito per Cursor/Soli Agent.
+- CI/CD documentata insieme al codice evita segreti sparsi solo in chat.
 
 ### Fase 3 — Correzione packaging SoliDS (npm pubblico) e fix tecnici
 
-**Timeframe**: da `46d08f4` / `ac2632f` (rimozione GitHub Packages da `.npmrc`) attraverso molteplici commit quasi ripetitivi su README/SETUP/AGENTS/.env → `0dd5060` swcMinify, `baacbc4` SDK mancante, `2636626` refactors.
+**Timeframe**: da `46d08f4` / `ac2632f` attraverso molteplici commit sulla documentazione.
 
-**Cosa è stato fatto**: allineamento a **`@soli92/solids` pubblico su npm** (stesso messaggio ripetuto su più file in commit distinti — possibile split meccanico o sessioni multiple), rimozione `NPM_TOKEN` dalla documentazione, fix `next.config` (`swcMinify` rimosso come deprecato), aggiunta esplicita `@anthropic-ai/sdk` in dipendenze.
-
-**Evidenza di AI-assist** (inferita):
-
-- **Alta** per volume e parallelismo: molti commit con messaggio quasi identico che tocca README, SETUP, AGENTS, `.env.example`, `.npmrc` a piccoli incrementi — pattern da “find-replace assistito” o da più passate agent.
-
-**Decisioni architetturali notevoli**:
-
-- Semplificare onboarding togliendo PAT GitHub quando il pacchetto design system è su **npm pubblico**.
-
-**Prompt chiave usati**
-
-> **Prompt [inferito]**: "Rimuovi NPM_TOKEN e riferimenti a GitHub Packages da README, SETUP_GUIDE, AGENTS, `.env.example`, `.npmrc` perché `@soli92/solids` è su npm pubblico; aggiungi `@anthropic-ai/sdk` se manca; rimuovi `swcMinify` deprecato da next.config."
-> *Evidenza*: catena commit quasi identici su doc/npm (`7be7e62`…`46d08f4`), `baacbc4`, `0dd5060`.
+**Cosa è stato fatto**: allineamento a **`@soli92/solids` pubblico su npm**, rimozione `NPM_TOKEN` dalla documentazione, fix `next.config` (`swcMinify` rimosso come deprecato), aggiunta esplicita `@anthropic-ai/sdk` in dipendenze.
 
 **Lezioni apprese**
 
-- **Opzione Next deprecata** (`swcMinify`) va rimossa per build pulite su Next 16 (`0dd5060`).
-- Dipendenze usate solo a runtime API route devono comparire in **`dependencies`**, non solo come trasitive (`baacbc4`).
-- Ripetere lo stesso messaggio di commit su molti file è sintomo di **replace meccanico**: un unico commit multi-file sarebbe più leggibile in history.
+- **Opzione Next deprecata** (`swcMinify`) va rimossa per build pulite su Next 16.
+- Dipendenze usate solo a runtime API route devono comparire in **`dependencies`**.
 
 ### Fase 4 — RAG: pgvector, ingest AI_LOG da GitHub, Voyage, retrieve in chat
 
-**Timeframe**: da `edace82` / `0ef1c25` (*feat(rag): add RAG config — Step A*) fino a `9ba4c05` (retrieval attivo + prompt rinforzato).
+**Timeframe**: da `edace82` fino a `9ba4c05` (retrieval attivo + prompt rinforzato).
 
-**Cosa è stato fatto**: modulo `lib/rag/` (`config`, `chunker`, `embedder` Voyage, `github` fetch AI_LOG via API Contents, `ingest` orchestrazione fetch/chunk/embed/upsert, `store` Supabase, `retrieve` query embedding + contesto formattato); `sql/001_pgvector_setup.sql` (tabella, indici, trigger, RPC, RLS); CLI `scripts/rag-ingest.ts` e script `rag:ingest`; integrazione in `app/api/chat/route.ts` con `retrieveContext` e **`getRAGSystemPrompt`**; fallback silenzioso se retrieval fallisce; fix ingest env `91dbb86`.
-
-**Evidenza di AI-assist** (inferita):
-
-- Ondata di commit **Step A** ripetuti/paralleli (`88638a9`, `64fa450`, …) poi integrazione in `route.ts` (`2001d4a`, `9ba4c05`) — tipico iterazione assistita su pipeline multi-file.
+**Cosa è stato fatto**: modulo `lib/rag/` (config, chunker, embedder Voyage, GitHub fetch AI_LOG, ingest, store Supabase, retrieve); `sql/001_pgvector_setup.sql` (tabella, indici, trigger, RPC); CLI `scripts/rag-ingest.ts`; integrazione in chat con `retrieveContext` e **`getRAGSystemPrompt`**; fallback silenzioso se retrieval fallisce.
 
 **Decisioni architetturali notevoli**:
 
-- **Contesto RAG trattato come autoritativo** nel system prompt (`lib/prompts.ts` — regole obbligatorie su citazioni, commit hash, gap espliciti).
-- **Runtime `nodejs`** e `maxDuration` 60 in API chat (file `route.ts`) per embedding/HTTP e streaming combinati.
-- **topK=15** per il retrieve (`9ba4c05`).
-
-**Prompt chiave usati**
-
-> **Prompt [inferito]**: "Implementa RAG: schema pgvector su Supabase, ingest degli AI_LOG da GitHub, embedding Voyage, retrieve nella POST /api/chat con prompt che impone citazione repo e hash commit."
-> *Evidenza*: `da89e9b`, `862e8df`, `21f76fc`, `2001d4a`, `9ba4c05`, `getRAGSystemPrompt` in `lib/prompts.ts`.
+- **Contesto RAG trattato come autoritativo** nel system prompt — regole obbligatorie su citazioni, commit hash, gap espliciti.
+- **topK=15** per il retrieve.
 
 **Lezioni apprese**
 
-- **Fallback silenzioso** su retrieval evita 500 in chat se vector store o env sono momentaneamente assenti (`route.ts` try/catch).
-- Script ingest deve caricare **`.env.local`** in modo coerente con `dotenv`/`tsx` (`91dbb86 fix(rag-ingest)`).
-- Ripetere molti commit “Step A” con messaggio simile appesantisce la history — squash o piano unico riduce rumore.
+- **Fallback silenzioso** su retrieval evita 500 in chat se vector store momentaneamente assente.
+- Script ingest deve caricare **`.env.local`** in modo coerente.
 
 ### Fase 5 — Refactor RAG multi-corpus (`lib/rag-service`, API HTTP, Vitest)
 
-**Timeframe**: 2026-04-24 (Fase 2A/2B modulo + store/ingest/query; Fase 3 route + CLI; test unitari e aggiornamento doc).
+**Timeframe**: 2026-04-24 (modulo + store/ingest/query; test unitari).
 
-**Cosa è stato fatto**: cartella **`lib/rag-service/`** (tipi, errori, config multi-corpus, chunker, embedder, `github.ts` generico per nome file, `store.ts` per tabella/RPC per corpus, `ingest.ts`, `query.ts`, **`index.ts`** barrel). Route Next **`app/api/rag/query`** e **`app/api/rag/ingest`** con `RAG_API_KEY` e (ingest) header **`x-admin-confirm: yes`**. Script **`scripts/rag-ingest.ts`** aggiornato con arg `all` \| `ai_logs` \| `agents_md`. **Vitest** 3 + `vitest.config.ts`, test su chunker/config/errori. **`AGENT.md`** alla root rimanda a **`AGENTS.md`**.
+**Cosa è stato fatto**: cartella **`lib/rag-service/`** con tipi, errori, config multi-corpus, chunker, embedder, GitHub fetch, store, ingest, query. Route Next **`app/api/rag/query`** e **`app/api/rag/ingest`** con autenticazione `RAG_API_KEY` e header **`x-admin-confirm`**. Script **`scripts/rag-ingest.ts`** con arg `all` | `ai_logs` | `agents_md`. Vitest 3 con test su chunker/config/errori.
 
-**Decisioni**: ingest/query esposti da HTTP; in un passaggio successivo la **chat** è stata migrata su **`queryCorpus`** da `rag-service` (non più `lib/rag/retrieve` nel path hot).
+**Decisioni**: ingest/query esposti da HTTP; chat migrata su **`queryCorpus`** da `rag-service`.
 
-**Lezioni**: barrel export + errori tipizzati semplificano consumer HTTP/CLI; test puri su chunker/config evitano dipendenze da Supabase/GitHub in CI.
+**Lezioni**: barrel export + errori tipizzati semplificano consumer HTTP/CLI; test puri evitano dipendenze esterne in CI.
 
-### Fase 6 — Ingest SSE, admin panel, sessione cookie, UI progress (2026-04-24)
+### Fase 6 — Ingest SSE, admin panel, sessione cookie, UI progress
 
-**Commit di riferimento** (estratto): `54c1fd8` (ProcessingIndicator + hardening chat), `20efcb2` / migrazione chat RAG-service, `fb4e5d2` (`ingest-stream`, tipi `IngestProgress*`, `ingestCorpus(..., options)`), `409c71e` (`/admin`, verify-password, `lib/admin-session`), `55edbbc` (`use-ingest-stream`, pannello admin reale).
+**Cosa è stato fatto**: endpoint **`POST /api/rag/ingest-stream`** con SSE; autenticazione **doppia** (cookie admin *oppure* `x-api-key` + `x-admin-confirm`); **`POST /api/admin/verify-password`** per cookie httpOnly. UI **`/admin`** con **`IngestPanel`** e **`useIngestStream`**. In chat: **`ProcessingIndicator`**, `requestAnimationFrame` sulla transizione fase, contenitori a altezza minima anti layout shift.
 
-**Cosa è stato fatto**: endpoint **`POST /api/rag/ingest-stream`** che streamma eventi JSON in SSE; autenticazione **doppia** (cookie admin valido *oppure* `x-api-key` + `x-admin-confirm` per esterni); se cookie admin, **`x-admin-confirm`** non richiesto su ingest-stream. **`POST /api/admin/verify-password`** imposta cookie httpOnly **`sp_admin_session`**. UI **`/admin`** con **`IngestPanel`** e **`useIngestStream`** (`fetch` + `credentials: "include"`, parser frame `\n\n`). In chat: **`ProcessingIndicator`**, `requestAnimationFrame` sulla transizione fase dopo `__SOURCES__`, contenitori a altezza minima anti layout shift.
+**Lezioni**: non mettere **`RAG_API_KEY`** nel bundle — il browser usa solo cookie + POST same-origin; stream manuale su **`ReadableStream`** per POST ingest.
 
-**Lezioni**: non mettere **`RAG_API_KEY`** nel bundle — il browser usa solo cookie + POST same-origin; **`EventSource`** non basta per POST ingest — stream manuale su **`ReadableStream`**.
+### Fase 7 — Fix UI bottone Invia: spacing e allineamento label
 
-**Fix successivi (stesso filone UI ingest + chat)**:
-- **Re-ingest Tutto (`corpus: all`)**: il vecchio hook trattava tutto come un’unica lista repo; il primo evento `complete` chiudeva la fase globale e i repo del secondo corpus sovrascrivevano quelli del primo se con stesso nome. Ora **`corpusRuns[]`** + **`ingestCorpusRunsReducer`** (e test Vitest) separano ogni `start`…`complete`; **`phase === "complete"`** globale solo a **chiusura stream**.
-- **Sources in chat**: marker `__SOURCES__`…`__END_SOURCES__` spezzato su più chunk non va più parsato con regex per singolo chunk (testo marker visibile); si usa **buffer cumulativo** + `continue` finché il blocco non è completo.
+**Commit**: allineamento label bottone con **flexbox centrato**.
 
-### Fase 7 — Bump @soli92/solids 1.7.0, font stack, test dipendenza (2026-04-24)
+**Cosa è stato fatto**: bottone invia (`components/chat-view.tsx`) originariamente aveva spacing OK (`px-6 py-3`) ma label non centrata verticalmente. Aggiunta `flex items-center justify-center` al className per centrare il testo sia verticalmente che orizzontalmente.
 
-**Cosa è stato fatto**: dipendenza **`@soli92/solids` ^1.7.0**; link **Google Fonts** in `app/layout.tsx`; rimosso `scroll-behavior: smooth` globale da `app/globals.css` (delegato al base layer SoliDS con `prefers-reduced-motion`); **`lib/solids-package.test.ts`** in Vitest; README / AGENTS / AI_LOG aggiornati.
+**Prima**:
+```jsx
+className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ... sd-min-touch-target"
+```
 
-**Lezioni**: allineare le app consumer alla stessa major-minor del DS riduce drift visivo (font non scaricate → fallback sistema).
+**Dopo**:
+```jsx
+className="flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ... sd-min-touch-target"
+```
 
----
-
-## Pattern ricorrenti identificati
-
-- **Conventional commits** (`feat:`, `fix:`, `config:`, `docs:`, `chore:`), scope **`(rag)`** per la pipeline RAG.
-- **Doppio binario documentazione**: README narrativo + `SETUP_GUIDE` operativo + `AGENTS` per agenti.
-- **Correzione post-scaffold** esplicita nei messaggi (`scaffolding batch`).
-- **Allineamento toolchain**: Node 22 (`.nvmrc` / `engines`).
-- **RAG come estensione del tutor**: stesso endpoint chat, contesto da **`lib/rag-service`** (`queryCorpus`); pipeline ingest anche via **`/api/rag/ingest-stream`** per feedback operatore.
+**Lezioni**: quando un bottone contiene testo senza altri elementi, **`flex + items-center + justify-center`** è il pattern standard per centratura perfetta; evita problemi di line-height ereditato o baseline diversi del font.
 
 ---
 
-## Tecnologie e scelte di stack
+## Note generali su prompt e pattern emersi
 
-- **Framework**: Next.js 16, React 19, TypeScript
-- **Styling**: Tailwind + preset `@soli92/solids`
-- **State**: componente chat client-side (streaming)
-- **Deploy**: Vercel (homepage nel `package.json` e workflow CI)
-- **LLM integration**: Anthropic SDK, SSE in API route, `SYSTEM_PROMPT` + **`getRAGSystemPrompt`**
-- **RAG / dati**: Supabase (pgvector), `@supabase/supabase-js`, SQL in `sql/001_pgvector_setup.sql`
-- **Embeddings**: Voyage AI API (`lib/rag/embedder.ts`, `VOYAGE_API_KEY` in `.env.example`)
-- **Ingest**: GitHub Contents API (legacy `lib/rag/github.ts`; nuovo `lib/rag-service/github.ts`), CLI `npm run rag:ingest` → `scripts/rag-ingest.ts` (corpus opzionale)
-- **Test**: Vitest (`npm test`), file `lib/**/*.test.ts` e `hooks/**/*.test.ts` (incluso **`lib/solids-package.test.ts`** per range SoliDS)
+### Pattern efficaci
 
----
+1. **Multi-file refactor**: quando molti file toccano lo stesso layer (doc, configurazione), è meglio un **unico commit multi-file** con messaggio generico (es. `docs: update RAG references`) che tanti commit "Step A" ripetitivi.
 
-## Problemi tecnici risolti (inferiti)
+2. **RAG + fallback silenzioso**: se il retrieval fallisce, chat continua senza contesto anziché 500 — UX migliore, debug in logs.
 
-1. **Dipendenza Anthropic mancante in manifest**: `baacbc4 fix: add missing @anthropic-ai/sdk dependency`.
-2. **Opzione Next deprecata**: `0dd5060 fix(next): remove deprecated swcMinify option`.
-3. **Refactor incompleti dopo scaffold**: `36632b2`, `2636626`.
-4. **Documentazione/registry npm vs GitHub Packages**: serie di commit `fix: rimuovi NPM_TOKEN…` / `.npmrc` (allineamento a pacchetto pubblico).
-5. **Ingest CLI e variabili env**: `91dbb86 fix(rag-ingest): fixed import for env.local variable retrieving`.
-6. **Retrieval non collegato al flusso chat**: risolto con `2001d4a` / `9ba4c05` (integrazione `retrieveContext` + `getRAGSystemPrompt`).
+3. **Barrel export + errori tipizzati**: `lib/rag-service/index.ts` come punto di ingresso centralizza l'interfaccia pubblica; errori custom facilitano consumer HTTP/CLI.
+
+4. **SSE per operazioni lunghe**: `ingest-stream` su POST/SSE è migliore di polling; UI aggiorna in real-time con basso overhead.
+
+5. **Test puri di logica**: `vitest` su chunker/config senza dipendenze Supabase/GitHub accelera feedback loop; integrazioni vanno in CI GitHub Actions.
+
+### Anti-pattern evitati
+
+- ❌ RAG_API_KEY nel bundle browser (era a rischio prima della fix autenticazione).
+- ❌ Molti commit "Step A" con messaggio identico (appesantisce history).
+- ❌ Dipendenze API esterne mancanti nel `package.json` (è capitato con `@anthropic-ai/sdk`).
+- ❌ Layout shift da altezza variabile di componenti dinamici (contenitori min-height lo evitano).
 
 ---
 
-## Appendice — Commit notevoli (estratto da `git log --oneline`)
+## Roadmap futuri (da documentare qui)
 
-Estratto HEAD→radice (in cima i più recenti): prima blocco **RAG**, poi scaffold/fix iniziali.
+- Sessione admin: expiry timeout, refresh token
+- Fine-tuning Anthropic con embedding locali (non Voyage)
+- Caching embedding query (Redis)
+- Mobile: PWA o app Expo
+- Metriche: tracking domande utente → feedback loop su dataset
 
-- `55edbbc` feat(admin): UI progress real-time ingest (hook SSE)
-- `409c71e` feat(admin): `/admin` + verify-password + cookie session
-- `fb4e5d2` feat(rag): `POST /api/rag/ingest-stream` + `onProgress` ingest
-- `54c1fd8` feat(ui): ProcessingIndicator + hardening chat
-- `9ba4c05` feat(rag): attiva retrieval con topK=15 + prompt rinforzato
-- `2001d4a` feat(rag): integra retrieveContext nel route.ts con fallback silenzioso
-- `91dbb86` fix(rag-ingest): fixed import for env.local variable retrieving
-- `88d8f00` / `7857c22` / `d0c96c9` feat(rag): aggiungi deps, env vars e prompt RAG
-- `da89e9b` feat(rag): add sql/001_pgvector_setup.sql with table, indexes, trigger, RPC and RLS
-- `47e6b02` feat(rag): add scripts/rag-ingest.ts CLI entry point
-- `21f76fc` feat(rag): add retrieve.ts with query embedding and formatted context output
-- `d24d71d` feat(rag): add ingest.ts orchestrator with fetch/chunk/embed/upsert pipeline
-- `862e8df` feat(rag): add github.ts with AI_LOG.md fetcher via GitHub Contents API
-- `188a383` feat(rag): add store.ts with Supabase upsertChunks and searchSimilar
-- `620d8b9` feat(rag): add embedder.ts with Voyage AI wrapper and batching
-- `30632aa` feat(rag): add chunker.ts with h2/h3 split and paragraph overflow handling
-- `0ef1c25` feat(rag): add config.ts with repo list and global constants
-- `2636626` fix: apply missing refactors from scaffolding batch
-- `36632b2` fix: apply missing refactors from scaffolding
-- `0dd5060` fix(next): remove deprecated swcMinify option
-- `baacbc4` fix: add missing @anthropic-ai/sdk dependency
-- `46d08f4` fix: rimuovi direttive GitHub Packages da `.npmrc` — @soli92/solids è pubblico su npm
-- `eb2343e` docs: SETUP_GUIDE.md - guida passo-passo completa
-- `92674ab` ci: update GitHub Actions deploy workflow for Vercel
-- `90fc89b` docs: AGENTS.md - operative context per AI assistants
-- `7132fbe` docs: WEEKLY_LOG.md prima settimana
-- `45828ff` docs: README.md narrativo con setup completo
-- `61cc0b5` feat: app/api/chat/route.ts - endpoint streaming chat
-- `ad63e64` feat: lib/prompts.ts con system prompt tutor
-- `5f9aeb5` init: package.json Next.js 16 con @soli92/solids
-- `7e82a8f` chore: configure npm registry for GitHub Packages (@soli92/solids)
-- `0006c8d` Initial commit
-
----
-
-## Punti aperti / note per il futuro
-
-- **Roadmap README / WEEKLY_LOG**: aggiornare log settimanali e README per descrivere **RAG operativo** (prima erano solo piani).
-- **grep `TODO|FIXME|HACK|XXX`** in `app/`, `lib/`, `components/`, `lib/rag/`: **nessun match** prioritario nell’ultima passata.
-- **Costi**: Anthropic + **Voyage** + traffico **Supabase** / GitHub API ingest — nessun budget cap o quota monitoring nel codice analizzato.
-- **Ingest**: frequenza aggiornamento indice (cron vs manuale), secret `GITHUB_TOKEN` / permessi repo, limiti rate GitHub Contents API.
-- **Debito tecnico inferito**: estensione `pgvector` e RLS su progetto Supabase devono restare allineate a `sql/001_pgvector_setup.sql` (migrazioni manuali vs file in repo).
-- **Debito tecnico inferito**: `topK` e soglia similarità / filtri per repo — tuning solo in commit `9ba4c05`, da validare su query reali.
-- **Debito tecnico inferito**: history ancora densa (85 commit in un giorno) — valutare squash prima di release “pubblica” narrativa.
-
----
-
-> **Nota metodologica**: ultimo aggiornamento manuale **2026-04-24** (Fase 7 SoliDS 1.7 + post Fase 6 `corpusRuns` / buffer sources + test `hooks/use-ingest-stream.test.ts`); le parti *[inferito]* vanno validate dal maintainer.
-
----
-
-## Metodologia compilazione automatica
-
-Ultimo aggiornamento contenuti **2026-04-24** (Fase 5 + Fase 6 + test admin-session + ingest reducer + doc AGENTS), analizzando in origine:
-
-- **90+** commit in `git log` su `main` (ordine di grandezza; conteggio esatto variabile)
-- **~25+** file/aree di contesto (inclusi `app/admin/*`, `app/api/admin/*`, `app/api/rag/ingest-stream`, `components/admin/*`, `components/chat-view.tsx`, `hooks/use-ingest-stream.ts`, `hooks/use-ingest-stream.test.ts`, `lib/admin-session.ts`, `lib/admin-session.test.ts`, `package.json`, `app/api/chat/route.ts`, `app/api/rag/*`, `lib/rag-service/*`, `.env.example`, `AGENTS.md`, `AGENT.md`, `README.md`, `vitest.config.ts`, workflow CI, WEEKLY_LOG / SETUP se presenti)
-- **0** occorrenze `TODO|FIXME|HACK|XXX` nei path sorgente campionati
-
-**Punti di minore confidenza:**
-
-- Prompt testuali fase RAG ricostruiti senza transcript sessione.
-- Dettaglio RLS/policies Supabase in produzione vs file SQL in repo.
-- Copertura test: unit su `lib/rag-service`, **`lib/admin-session`** e **reducer ingest** in `hooks/use-ingest-stream.test.ts` presenti; integrazione `/api/rag/*` / ingest E2E ancora assenti.
-
----
