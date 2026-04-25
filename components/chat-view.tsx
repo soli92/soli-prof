@@ -322,7 +322,7 @@ export function ChatView() {
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors sd-min-touch-target"
+              className="flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors sd-min-touch-target"
               aria-label={loading ? "Invio in corso" : "Invia messaggio"}
             >
               {loading ? "..." : "Invia"}
