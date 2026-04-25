@@ -309,11 +309,8 @@ export function ChatView() {
       </div>
 
       <div className="bg-white border-t border-gray-200 shadow-lg">
-        <form
-          onSubmit={handleSendMessage}
-          className="max-w-4xl mx-auto p-4 md:p-6"
-        >
-          <div className="flex gap-2 md:gap-3">
+        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto p-4">
+          <div className="flex gap-2">
             <input
               type="text"
               value={input}
@@ -325,7 +322,8 @@ export function ChatView() {
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="px-4 md:px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors whitespace-nowrap min-h-[44px]"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors sd-min-touch-target"
+              aria-label={loading ? "Invio in corso" : "Invia messaggio"}
             >
               {loading ? "..." : "Invia"}
             </button>
