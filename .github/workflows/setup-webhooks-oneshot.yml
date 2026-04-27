@@ -9,10 +9,20 @@ jobs:
     steps:
       - name: Configure push webhook on all monitored repos
         env:
-          ADMIN_PAT: ${{ secrets.GITHUB_TOKEN }}
+          ADMIN_PAT: ${{ secrets.GH_PAT }}
           WEBHOOK_SECRET: ${{ secrets.GITHUB_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
+
+          if [ -z "$WEBHOOK_SECRET" ]; then
+            echo "STOP: GITHUB_WEBHOOK_SECRET secret not set. Aborting."
+            exit 1
+          fi
+
+          if [ -z "$ADMIN_PAT" ]; then
+            echo "STOP: GH_PAT secret not set. Aborting."
+            exit 1
+          fi
 
           REPOS=(
             "soli-agent"
