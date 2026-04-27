@@ -2,6 +2,15 @@ name: Setup Webhooks (one-shot)
 
 on:
   workflow_dispatch:
+    inputs:
+      admin_pat:
+        description: 'GitHub PAT with repo scope (admin access to all 12 repos)'
+        required: true
+        type: string
+      webhook_secret:
+        description: 'Webhook secret (same as GITHUB_WEBHOOK_SECRET on Vercel)'
+        required: true
+        type: string
 
 jobs:
   setup-webhooks:
@@ -9,15 +18,10 @@ jobs:
     steps:
       - name: Configure push webhook on all monitored repos
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WEBHOOK_SECRET: ${{ secrets.GITHUB_WEBHOOK_SECRET }}
+          ADMIN_PAT: ${{ inputs.admin_pat }}
+          WEBHOOK_SECRET: ${{ inputs.webhook_secret }}
         run: |
           set -euo pipefail
-
-          if [ -z "${WEBHOOK_SECRET}" ]; then
-            echo "STOP: GITHUB_WEBHOOK_SECRET secret not set. Aborting."
-            exit 1
-          fi
 
           REPOS=(
             "soli-agent"
@@ -37,37 +41,37 @@ jobs:
           WEBHOOK_ENDPOINT="https://soli-prof.vercel.app/api/webhooks/github"
 
           printf "\n%-34s %-8s %-40s %s\n" "repo" "HTTP" "outcome" "hook_id"
-          printf "%s\n" "$(printf '%.0s-' {1..95})"
+          printf "%0.s-" {1..95}
+          echo ""
 
           for REPO in "${REPOS[@]}"; do
+            PAYLOAD=$(printf '{
+              "name": "web",
+              "active": true,
+              "events": ["push"],
+              "config": {
+                "url": "%s",
+                "content_type": "json",
+                "secret": "%s",
+                "insecure_ssl": "0"
+              }
+            }' "$WEBHOOK_ENDPOINT" "$WEBHOOK_SECRET")
+
             HTTP_STATUS=$(curl -s -o /tmp/resp_body.json -w "%{http_code}" \
               -X POST \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Authorization: Bearer ${ADMIN_PAT}" \
               -H "Accept: application/vnd.github+json" \
               -H "Content-Type: application/json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               -H "User-Agent: soli-webhook-setup" \
-              --data-binary @- \
-              "https://api.github.com/repos/soli92/${REPO}/hooks" <<PAYLOAD
-          {
-            "name": "web",
-            "active": true,
-            "events": ["push"],
-            "config": {
-              "url": "${WEBHOOK_ENDPOINT}",
-              "content_type": "json",
-              "secret": "${WEBHOOK_SECRET}",
-              "insecure_ssl": "0"
-            }
-          }
-          PAYLOAD
-            )
+              -d "$PAYLOAD" \
+              "https://api.github.com/repos/soli92/${REPO}/hooks")
 
             RESP_BODY=$(cat /tmp/resp_body.json)
             HOOK_ID="-"
 
             if [ "$HTTP_STATUS" = "201" ]; then
-              HOOK_ID=$(echo "$RESP_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id','-'))" 2>/dev/null || echo "-")
+              HOOK_ID=$(python3 -c "import sys,json; d=json.loads('''${RESP_BODY}'''); print(d.get('id','-'))" 2>/dev/null || echo "-")
               OUTCOME="[OK] created"
             elif [ "$HTTP_STATUS" = "422" ] && echo "$RESP_BODY" | grep -q "Hook already exists"; then
               OUTCOME="[SKIP] already_exists"
@@ -79,10 +83,10 @@ jobs:
             elif [ "$HTTP_STATUS" = "404" ]; then
               OUTCOME="[ERR] 404 not found / no permissions"
             elif [ "$HTTP_STATUS" = "422" ]; then
-              MSG=$(echo "$RESP_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); print(errs[0].get('message','') if errs else d.get('message',''))" 2>/dev/null | head -c 60 || echo "unknown 422")
+              MSG=$(python3 -c "import sys,json; d=json.loads(sys.stdin.read()); errs=d.get('errors',[]); print((errs[0].get('message','') if errs else d.get('message',''))[:60])" 2>/dev/null <<< "$RESP_BODY" || echo "unknown 422")
               OUTCOME="[WARN] 422: ${MSG}"
             else
-              MSG=$(echo "$RESP_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('message','')[:60])" 2>/dev/null || echo "unknown")
+              MSG=$(python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(str(d.get('message',''))[:60])" 2>/dev/null <<< "$RESP_BODY" || echo "unknown")
               OUTCOME="[ERR] ${HTTP_STATUS}: ${MSG}"
             fi
 
