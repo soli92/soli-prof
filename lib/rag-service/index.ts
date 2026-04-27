@@ -12,6 +12,7 @@ export {
 
 export {
   queryCorpus,
+  queryMultipleCorpora,
 } from "./query";
 
 export {
@@ -53,3 +54,5 @@ export type {
   IngestProgressCallback,
   IngestOptions,
 } from "./types";
+
+export type { MultiCorpusQueryResult } from "./query";

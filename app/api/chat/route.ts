@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, DEFAULT_MODEL } from "@/lib/anthropic";
 import { getRAGSystemPrompt } from "@/lib/prompts";
-import { queryCorpus, type RetrievedSource } from "@/lib/rag-service";
+import { queryMultipleCorpora, type RetrievedSource } from "@/lib/rag-service";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -37,15 +37,22 @@ export async function POST(request: NextRequest) {
       },
     ];
 
-    // RAG: retrieval contesto dagli AI_LOG indicizzati
+    // RAG: retrieval cross-corpus (ai_logs + agents_md + repo_configs) con RRF
     // Fallback silenzioso: se il retrieval fallisce, il tutor risponde senza contesto
     let retrievedContext = "";
     let sources: RetrievedSource[] = [];
     try {
-      const ragResult = await queryCorpus("ai_logs", body.userMessage, 25);
+      const ragResult = await queryMultipleCorpora(
+        ["ai_logs", "agents_md", "repo_configs"],
+        body.userMessage,
+        25,
+        25
+      );
       retrievedContext = ragResult.context;
       sources = ragResult.sources;
-      console.log(`[RAG] Retrieved ${retrievedContext.length} chars of context, ${sources.length} sources`);
+      console.log(
+        `[RAG] Retrieved ${retrievedContext.length} chars of context from ${ragResult.corporaQueried.length} corpora, ${sources.length} sources`
+      );
     } catch (err) {
       console.error("[RAG] Retrieval failed, continuing without context:", err);
     }
