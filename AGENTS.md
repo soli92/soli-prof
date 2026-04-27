@@ -41,7 +41,7 @@ soli-prof/
 │   │   ├── admin/
 │   │   │   └── verify-password/route.ts  # POST — verifica ADMIN_PAGE_PASSWORD, cookie sp_admin_session
 │   │   ├── chat/
-│   │   │   └── route.ts           # POST /api/chat — streaming SSE (RAG via queryCorpus → lib/rag-service)
+│   │   │   └── route.ts           # POST /api/chat — streaming SSE (RAG cross-corpus RRF via queryMultipleCorpora → lib/rag-service)
 │   │   └── rag/
 │   │       ├── query/route.ts     # POST /api/rag/query — retrieval multi-corpus (x-api-key)
 │   │       ├── ingest/route.ts    # POST /api/rag/ingest — indicizzazione sync (x-api-key + x-admin-confirm)
@@ -213,29 +213,30 @@ Possibile creare funzione `getSystemPrompt(specialization?: string)` per adattar
 ### Due layer
 | Modulo | Uso |
 |--------|-----|
-| **`lib/rag/`** | Legacy (retrieve/config/chunker ecc.): mantenuto in repo; la **chat** usa **`queryCorpus`** da **`lib/rag-service`** (corpus `ai_logs`, `topK` configurato in `app/api/chat/route.ts`). |
-| **`lib/rag-service/`** | Multi-corpus (`ai_logs`, `agents_md`), ingest con **`IngestOptions.onProgress`**, query, errori tipizzati. Import pubblico da **`@/lib/rag-service`** (barrel `index.ts`). |
+| **`lib/rag/`** | Legacy (retrieve/config/chunker ecc.): mantenuto in repo; **non** usato dalla chat principale. |
+| **`lib/rag-service/`** | Multi-corpus (`ai_logs`, `agents_md`, `repo_configs`), ingest con **`IngestOptions.onProgress`**, **`queryCorpus`** (singolo corpus), **`queryMultipleCorpora`** (RRF su N corpus), errori tipizzati. La **chat** in `app/api/chat/route.ts` chiama **`queryMultipleCorpora(["ai_logs", "agents_md", "repo_configs"], …)`** con fusione **RRF** (`RRF_K=60`). **`POST /api/rag/query`** e integrazioni esterne usano **`queryCorpus`** su un corpus alla volta. Import pubblico da **`@/lib/rag-service`** (barrel `index.ts`). |
 
 ### Repository indicizzati (`CORPUS_REPOS`)
 
-L’elenco vive in **`lib/rag-service/config.ts`** (due array: `ai_logs`, `agents_md`). Tra i repo: `soli-agent`, `casa-mia-be`, `casa-mia-fe`, `bachelor-party-claudiano`, `solids`, `soli-prof`; per `agents_md` anche `soli-dm-be`, `soli-dm-fe`, `soli-dome`, `pippify`, `soli-platform`, `Koollector` e **health-wand-and-fire** (stesso identificatore in **entrambi** i corpus, branch `main`, owner `soli92`).
+L’elenco vive in **`lib/rag-service/config.ts`** (tre chiavi: `ai_logs`, `agents_md`, `repo_configs`). Tra i repo: `soli-agent`, `casa-mia-be`, `casa-mia-fe`, `bachelor-party-claudiano`, `solids`, `soli-prof`; per `agents_md` anche `soli-dm-be`, `soli-dm-fe`, `soli-dome`, `pippify`, `soli-platform`, `Koollector` e **health-wand-and-fire** (stesso identificatore in **ai_logs** e **agents_md**, branch `main`, owner `soli92`). Il corpus **`repo_configs`** indicizza file di configurazione per repo (vedi `DEFAULT_CONFIG_SOURCES` in config).
 
 ### CLI ingest
 ```bash
-npm run rag:ingest              # tutti i corpus
-npm run rag:ingest -- ai_logs   # solo AI_LOG.md
-npm run rag:ingest -- agents_md # solo AGENTS.md
+npm run rag:ingest                # tutti i corpus
+npm run rag:ingest -- ai_logs    # solo AI_LOG.md
+npm run rag:ingest -- agents_md  # solo AGENTS.md
+npm run rag:ingest -- repo_configs # solo file config indicizzati
 ```
 Script: `scripts/rag-ingest.ts` (carica `.env.local` via `dotenv`).
 
 ### POST `/api/rag/query`
 - Header: `x-api-key: <RAG_API_KEY>`
-- Body JSON: `{ "corpus": "ai_logs" \| "agents_md", "query": string, "topK"?: number }`
+- Body JSON: `{ "corpus": "ai_logs" \| "agents_md" \| "repo_configs", "query": string, "topK"?: number }` (corpus validi = chiavi di **`CORPUS_REGISTRY`**)
 - Risposta: `{ corpus, context, sources }`
 
 ### POST `/api/rag/ingest`
 - Header: `x-api-key` come sopra, più **`x-admin-confirm: yes`**
-- Body JSON: `{ "corpus": "ai_logs" \| "agents_md" \| "all" }`
+- Body JSON: `{ "corpus": "ai_logs" \| "agents_md" \| "repo_configs" \| "all" }`
 - Risposta: `{ reports: IngestReport[] }` (operazione sincrona, può richiedere minuti)
 
 ### POST `/api/rag/ingest-stream` (SSE)
@@ -244,7 +245,7 @@ Script: `scripts/rag-ingest.ts` (carica `.env.local` via `dotenv`).
   1. **Cookie** `sp_admin_session` valido (login da **`POST /api/admin/verify-password`** con `ADMIN_PAGE_PASSWORD`) — niente `x-api-key` né `x-admin-confirm` nel browser.
   2. **Oppure** `x-api-key: <RAG_API_KEY>` + **`x-admin-confirm: yes`** (CLI, script, integrazioni esterne).
 - Body JSON: come ingest REST (`corpus` singolo o `"all"`).
-- Con **`corpus: "all"`** il backend emette **due sequenze** in fila (es. `ai_logs` poi `agents_md`): ogni `start` … `complete` è uno scope distinto. Il client (`useIngestStream`) mantiene un array **`corpusRuns`** e aggiorna solo l’ultimo run su eventi repo/phase/complete; la fase globale **`complete`** passa a fine stream (chiusura `ReadableStream`), non sul primo `complete` JSON.
+- Con **`corpus: "all"`** il backend emette **una sequenza per corpus** in fila (ordine definito dal servizio, tipicamente `ai_logs` → `agents_md` → `repo_configs`): ogni `start` … `complete` è uno scope distinto. Il client (`useIngestStream`) mantiene un array **`corpusRuns`** e aggiorna solo l’ultimo run su eventi repo/phase/complete; la fase globale **`complete`** passa a fine stream (chiusura `ReadableStream`), non sul primo `complete` JSON.
 
 ---
 
@@ -374,7 +375,7 @@ vercel --prod  # Richiede VERCEL_TOKEN in .env.local o login interattivo
 
 ## Testing
 
-**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. Pattern **`lib/**/*.test.ts`** e **`hooks/**/*.test.ts`**: **`lib/rag-service/*.test.ts`** (chunker, config, errori), **`lib/admin-session.test.ts`** (sessioni admin / cookie options), **`lib/solids-package.test.ts`** (range **`@soli92/solids` ^1.7.0**), **`hooks/use-ingest-stream.test.ts`** (reducer multi-corpus `ingestCorpusRunsReducer`, `deriveIngestAggregates`).
+**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. Pattern **`lib/**/*.test.ts`** e **`hooks/**/*.test.ts`**: **`lib/rag-service/*.test.ts`** (chunker, config, errori, **`query.test.ts`** — RRF **`queryMultipleCorpora`** con mock `queryImpl`), **`lib/admin-session.test.ts`** (sessioni admin / cookie options), **`lib/solids-package.test.ts`** (range **`@soli92/solids` ^1.7.0**), **`hooks/use-ingest-stream.test.ts`** (reducer multi-corpus `ingestCorpusRunsReducer`, `deriveIngestAggregates`).
 
 ```bash
 npm test              # vitest run — CI-friendly
@@ -489,7 +490,7 @@ npm run build
 
 ---
 
-**Ultimo aggiornamento**: Aprile 2026 — `/admin` + cookie session, **`/api/rag/ingest-stream`** con UI per corpus (`corpusRuns`), hook **`use-ingest-stream`** (fase **`complete`** a fine stream), buffer SSE sources in **`chat-view`**, **`ProcessingIndicator`**, chat su **`queryCorpus`** (`lib/rag-service`), Vitest su `lib/` + `hooks/`, sezione **Repository indicizzati** in `CORPUS_REPOS` (incluso **health-wand-and-fire**)
+**Ultimo aggiornamento**: Aprile 2026 — `/admin` + cookie session, **`/api/rag/ingest-stream`** con UI per corpus (`corpusRuns`), hook **`use-ingest-stream`** (fase **`complete`** a fine stream), buffer SSE sources in **`chat-view`**, **`ProcessingIndicator`**, chat con **`queryMultipleCorpora`** (tre corpus + **RRF**) in `lib/rag-service`, Vitest su `lib/` + `hooks/` (inclusi test RRF), **`CORPUS_REPOS`** con **`repo_configs`** e **health-wand-and-fire**
 
 ---
 

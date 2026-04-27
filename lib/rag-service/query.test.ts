@@ -102,4 +102,22 @@ describe("queryMultipleCorpora (RRF)", () => {
     expect(result.corporaQueried).toEqual(corpora);
     expect(queryImpl).toHaveBeenCalledTimes(3);
   });
+
+  it("con tutti i corpus senza hit restituisce contesto e sorgenti vuoti", async () => {
+    const queryImpl = vi.fn().mockResolvedValue({
+      corpus: "ai_logs",
+      context: "",
+      sources: [],
+    });
+
+    const result = await queryMultipleCorpora(
+      ["ai_logs", "agents_md"],
+      "query generica",
+      25,
+      25,
+      queryImpl
+    );
+    expect(result.sources).toEqual([]);
+    expect(result.context).toBe("");
+  });
 });

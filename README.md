@@ -94,7 +94,11 @@ Dettagli: vedi [WEEKLY_LOG.md](./WEEKLY_LOG.md).
 
 ## RAG (knowledge base)
 
-Il tutor può attingere a contesto da **Supabase + pgvector**: ingest di `AI_LOG.md` e `AGENTS.md` da repository GitHub elencate in `lib/rag-service/config.ts` (`CORPUS_REPOS`), tra cui progetti come `soli-agent`, `solids`, `soli-prof` e **health-wand-and-fire** (shooter arcade). Dopo ogni modifica all’elenco, eseguire `npm run rag:ingest` (o ingest da `/admin` in locale) e verificare variabili `VOYAGE_*`, `SUPABASE_*`, `GITHUB_TOKEN` come in `AGENTS.md` e `.env.example`.
+Il tutor può attingere a contesto da **Supabase + pgvector**: ingest da repository GitHub in **`lib/rag-service/config.ts`** (`CORPUS_REPOS`), con tre corpus — **`ai_logs`** (`AI_LOG.md`), **`agents_md`** (`AGENTS.md`), **`repo_configs`** (file di configurazione tipo `package.json`, workflow, ecc.) — tra cui progetti come `soli-agent`, `solids`, `soli-prof` e **health-wand-and-fire** (shooter arcade).
+
+La **chat principale** (`POST /api/chat`) recupera in parallelo dai tre corpus e fonde i risultati con **Reciprocal Rank Fusion (RRF)** (`lib/rag-service/query.ts`, funzione **`queryMultipleCorpora`**), così da bilanciare ranking tra corpora di dimensioni diverse. L’endpoint **`POST /api/rag/query`** resta su **un corpus alla volta** (`queryCorpus`), utile per strumenti esterni.
+
+Dopo ogni modifica all’elenco repo, eseguire `npm run rag:ingest` (o ingest da `/admin` in locale) e verificare variabili `VOYAGE_*`, `SUPABASE_*`, `GITHUB_TOKEN` come in `AGENTS.md` e `.env.example`.
 
 ## Tecnologie principali
 
@@ -123,7 +127,7 @@ soli-prof/
 ├── app/
 │   ├── admin/page.tsx         # Area admin (re-ingest KB) — richiede ADMIN_PAGE_PASSWORD
 │   ├── api/
-│   │   ├── chat/route.ts      # Chat streaming + RAG (lib/rag-service)
+│   │   ├── chat/route.ts      # Chat streaming + RAG cross-corpus (RRF, lib/rag-service)
 │   │   ├── admin/verify-password/route.ts
 │   │   └── rag/
 │   │       ├── query, ingest, ingest-stream   # RAG HTTP (+ SSE progress su ingest-stream)
@@ -158,7 +162,7 @@ npm run build
 # Type check
 npm run type-check
 
-# Test unitari (Vitest — rag-service + admin-session)
+# Test unitari (Vitest — rag-service, RRF query.test, admin-session, hooks)
 npm test
 
 # Lint
