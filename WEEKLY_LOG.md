@@ -203,6 +203,71 @@ Questo pattern è **standard** per bottoni con testo/icone e **elimina dipendenz
 
 ---
 
+## Settimana 4: Pulizia RAG, chunker contestuale e hardening chat/admin (24 aprile 2026)
+
+### 🎯 Obiettivi
+- ✅ Pulizia architetturale (rimuovere lib/rag/ vecchio post-migrazione)
+- ✅ Chunker più fine per liste markdown (pattern contextual retrieval)
+- ✅ Ridurre hallucination su query generiche
+- ✅ Ridurre rumore visivo nei badge sources
+- ✅ Fix bug rendering marker SSE nella chat
+- ✅ Fix bug admin "Re-ingest Tutto"
+
+### 📝 Cosa è stato fatto
+
+#### Pulizia architetturale
+- Rimosso `lib/rag/` vecchio (7 file morti post-migrazione a `lib/rag-service`)
+- `tsconfig.tsbuildinfo` rimosso dal tracking git
+- `.gitignore` ripulito dai duplicati
+
+#### Chunker contextual retrieval
+- Split bullet list markdown con soglie: >=3 item e ogni item >=50 char
+- Preambolo della sezione padre incluso come prefisso in ogni chunk split
+- Pattern ispirato a "Contextual Retrieval" di Anthropic (sett 2024)
+- Edge case: bullet multi-paragrafo, liste miste ordered+unordered, bullet >maxChars splittati
+- 36 test (+8 nuovi)
+- Risultato: 98→231 chunk ai_logs, 143→259 chunk agents_md
+
+#### System prompt anti-forcing
+- Bug: il tutor inventava API come "chainProvider" su domande generiche tipo "cos'è una monade"
+- Aggiunta sezione "QUANDO NON FORZARE IL CONTESTO" in `lib/prompts.ts`
+- Distingue query specifiche ai progetti (USA contesto obbligatoriamente) vs generiche (contesto opzionale)
+
+#### Modo B — threshold similarity asimmetrico
+- Bug: query generiche mostravano 25+ badge di chunk con similarity marginale
+- Due soglie distinte in RAG_CONFIG:
+  - `similarityThresholdForContext=0.20` (LLM vede materiale per inferenza)
+  - `similarityThresholdForSources=0.40` (UI mostra solo badge ad alta confidenza)
+
+#### Fix parser SSE `__SOURCES__`
+- Bug: il marker `__SOURCES__<json>__END_SOURCES__` appariva come testo grezzo nella chat su risposte con molte fonti
+- Causa: parser frontend usava regex sul singolo chunk, marker arrivava spezzato tra chunk SSE
+- Fix: buffer accumulativo cross-chunk
+
+#### Fix admin Re-ingest Tutto
+- Bug: UI mostrava solo l'ultimo corpus processato (agents_md)
+- Causa: hook trattava eventi SSE come stream unificato, mentre backend emette 2 cicli
+- Fix: introduzione di CorpusRun + `corpusRuns[]`; UI con sezione per corpus run
+
+### 🧠 Lezioni tecniche cristallizzate
+- Serverless costringe design stateless (cookie HMAC)
+- Measure before optimize (validato con 5 query empiriche)
+- Stream SSE: mai assumere atomicità dei pattern, buffer accumulativo come default
+- Soglia asimmetrica: separare "cosa il LLM vede" da "cosa l'utente vede"
+
+### 🔧 Debito tecnico dichiarato
+- `/api/chat` oggi usa solo `ai_logs` senza RRF cross-corpus
+- "Inferenza da assenza": il tutor dice "non vedo X in CI" se il chunk non è indicizzato
+- `topK=25` hardcoded in `/api/chat`
+
+### 🚀 Open per prossime sessioni
+- Automazione ingest (GitHub Actions webhook + cron Vercel)
+- Hybrid search BM25 + semantic
+- Reranker Voyage
+- Espansione corpus a workflows + `package.json` (risolve inferenza da assenza)
+
+---
+
 ## Note generali
 
 - **Editor**: VS Code + Cursor per agenti AI
