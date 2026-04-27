@@ -42,10 +42,14 @@ soli-prof/
 │   │   │   └── verify-password/route.ts  # POST — verifica ADMIN_PAGE_PASSWORD, cookie sp_admin_session
 │   │   ├── chat/
 │   │   │   └── route.ts           # POST /api/chat — streaming SSE (RAG cross-corpus RRF via queryMultipleCorpora → lib/rag-service)
-│   │   └── rag/
-│   │       ├── query/route.ts     # POST /api/rag/query — retrieval multi-corpus (x-api-key)
-│   │       ├── ingest/route.ts    # POST /api/rag/ingest — indicizzazione sync (x-api-key + x-admin-confirm)
-│   │       └── ingest-stream/route.ts  # POST SSE — stesso ingest con eventi per-repo (cookie admin OPPURE x-api-key)
+│   │   ├── rag/
+│   │   │   ├── query/route.ts     # POST /api/rag/query — retrieval multi-corpus (x-api-key)
+│   │   │   ├── ingest/route.ts    # POST /api/rag/ingest — indicizzazione sync (x-api-key + x-admin-confirm)
+│   │   │   └── ingest-stream/route.ts  # POST SSE — stesso ingest con eventi per-repo (cookie admin OPPURE x-api-key)
+│   │   └── webhooks/
+│   │       └── github/
+│   │           ├── route.ts        # POST — evento push GitHub, HMAC, re-ingest selettivo (fire-and-forget)
+│   │           └── route.test.ts     # Vitest — firma, corpora, path workflow
 │   ├── page.tsx                   # Pagina home (chat)
 │   ├── layout.tsx                 # Root layout + metadati
 │   └── globals.css                # Stili globali
@@ -67,6 +71,11 @@ soli-prof/
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml             # GitHub Actions → Vercel (auto)
+├── scripts/
+│   ├── rag-ingest.ts              # CLI `npm run rag:ingest`
+│   ├── setup-webhooks.sh          # Ops: registra webhook `push` sui repo in CORPUS_REPOS ( `GITHUB_PAT` + `GITHUB_WEBHOOK_SECRET` )
+│   ├── chunker-dryrun.ts          # Dry-run chunker
+│   └── test-chunker.ts
 ├── .env.example                   # Variabili d'ambiente template
 ├── .npmrc                         # NPM config (registry npmjs.org)
 ├── .nvmrc                         # Node.js version (22)
@@ -247,6 +256,12 @@ Script: `scripts/rag-ingest.ts` (carica `.env.local` via `dotenv`).
 - Body JSON: come ingest REST (`corpus` singolo o `"all"`).
 - Con **`corpus: "all"`** il backend emette **una sequenza per corpus** in fila (ordine definito dal servizio, tipicamente `ai_logs` → `agents_md` → `repo_configs`): ogni `start` … `complete` è uno scope distinto. Il client (`useIngestStream`) mantiene un array **`corpusRuns`** e aggiorna solo l’ultimo run su eventi repo/phase/complete; la fase globale **`complete`** passa a fine stream (chiusura `ReadableStream`), non sul primo `complete` JSON.
 
+### `POST /api/webhooks/github` (GitHub → re-ingest su `push`)
+
+- **Implementazione**: `app/api/webhooks/github/route.ts` — verifica **`X-Hub-Signature-256`** (HMAC-SHA256) con **`GITHUB_WEBHOOK_SECRET`**. Se il secret manca: 500; firma assente/invalida: 401. Parsing payload **`push`**, scelta **corpus** e **scope repo** in base ai path modificati; **`ingestCorpus`** in **fire-and-forget** (risposta 200 immediata, `maxDuration` 60s; non bloccare il client GitHub oltre il timeout di retry). Test: `app/api/webhooks/github/route.test.ts`.
+- **Registrazione lato GitHub** (13 repo in tutto, evento **`push`**, URL `https://soli-prof.vercel.app/api/webhooks/github`, `content_type: json`): **soli-prof** configurato manualmente; per gli altri 12 (stessi elenco in **`scripts/setup-webhooks.sh`**: `soli-agent`, `casa-mia-be`, `casa-mia-fe`, `bachelor-party-claudiano`, `solids`, `soli-dm-be`, `soli-dm-fe`, `soli-dome`, `pippify`, `soli-platform`, `koollector`, `health-wand-and-fire`) usare quello script da macchina con env **`GITHUB_PAT`** (scope `admin:repo_hook`) e **`GITHUB_WEBHOOK_SECRET`** (identico a Vercel). Il PAT **non** serve al runtime Next, solo al setup.
+- I repo sopra corrispondono a **`CORPUS_REPOS`** in `lib/rag-service/config.ts` (per corpus `ai_logs` / `agents_md` / `repo_configs` a seconda del target); il nome remoto `koollector` è `Koollector` in alcuni path locali, su GitHub è `koollector`.
+
 ---
 
 ## Admin panel (`/admin`)
@@ -268,6 +283,12 @@ Script: `scripts/rag-ingest.ts` (carica `.env.local` via `dotenv`).
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — Supabase pgvector
 - `GITHUB_TOKEN` — Lettura repo per ingest (Contents API)
 - `RAG_API_KEY` — Protegge `/api/rag/query`, `/api/rag/ingest` e (se non si usa il cookie admin) **`/api/rag/ingest-stream`** (stesso valore in header `x-api-key`)
+
+### Webhook GitHub (re-ingest) e ops
+- `GITHUB_WEBHOOK_SECRET` — Verifica HMAC su **`POST /api/webhooks/github`**. Valore in Vercel e nel campo **secret** del webhook GitHub. Se assente, l’handler webhook risponde 500.
+- `GITHUB_PAT` — **Opzionale**, **non** usato da Next in produzione: serve solo in locale per eseguire **`scripts/setup-webhooks.sh`** (creazione webhook con API GitHub; scope `admin:repo_hook`). Inseribile in `.env.local` senza committare.
+
+### Altre
 - `ADMIN_PAGE_PASSWORD` — Protegge il gate **`/admin`** e alimenta il cookie di sessione via `verify-password` (generazione suggerita: `openssl rand -base64 24`)
 
 Vedi `.env.example` per i placeholder.
@@ -375,7 +396,7 @@ vercel --prod  # Richiede VERCEL_TOKEN in .env.local o login interattivo
 
 ## Testing
 
-**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. Pattern **`lib/**/*.test.ts`** e **`hooks/**/*.test.ts`**: **`lib/rag-service/*.test.ts`** (chunker, config, errori, **`query.test.ts`** — RRF **`queryMultipleCorpora`** con mock `queryImpl`), **`lib/admin-session.test.ts`** (sessioni admin / cookie options), **`lib/solids-package.test.ts`** (range **`@soli92/solids` ^1.7.0**), **`hooks/use-ingest-stream.test.ts`** (reducer multi-corpus `ingestCorpusRunsReducer`, `deriveIngestAggregates`).
+**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. Pattern **`lib/**/*.test.ts`**, **`hooks/**/*.test.ts`** e **`app/api/webhooks/github/route.test.ts`**: **`lib/rag-service/*.test.ts`** (chunker, config, errori, **`query.test.ts`** — RRF **`queryMultipleCorpora`** con mock `queryImpl`), **`lib/admin-session.test.ts`** (HMAC `ADMIN_SESSION_SECRET`, opzioni cookie; per assert “secret mancante” usare **`vi.stubEnv("ADMIN_SESSION_SECRET", "")`** invece di contare solo su **`vi.unstubAllEnvs()`**, che ripristina l’env reale e può lasciare la variabile valorizzata in shell / `.env`), **`lib/solids-package.test.ts`** (range **`@soli92/solids` ^1.7.0**), **`hooks/use-ingest-stream.test.ts`** (reducer multi-corpus `ingestCorpusRunsReducer`, `deriveIngestAggregates`); **`route.test.ts`** (webhook: firma HMAC, filtri `push`, trigger corpus).
 
 ```bash
 npm test              # vitest run — CI-friendly
@@ -490,7 +511,7 @@ npm run build
 
 ---
 
-**Ultimo aggiornamento**: Aprile 2026 — `/admin` + cookie session, **`/api/rag/ingest-stream`** con UI per corpus (`corpusRuns`), hook **`use-ingest-stream`** (fase **`complete`** a fine stream), buffer SSE sources in **`chat-view`**, **`ProcessingIndicator`**, chat con **`queryMultipleCorpora`** (tre corpus + **RRF**) in `lib/rag-service`, Vitest su `lib/` + `hooks/` (inclusi test RRF), **`CORPUS_REPOS`** con **`repo_configs`** e **health-wand-and-fire**
+**Ultimo aggiornamento**: Aprile 2026 — **`/api/webhooks/github`** (re-ingest su `push`, HMAC, `scripts/setup-webhooks.sh` per 12 repo + soli-prof manuale), oltre a: `/admin` + cookie, **`/api/rag/ingest-stream`**, hook **`use-ingest-stream`**, buffer SSE in **`chat-view`**, **`queryMultipleCorpora`** (RRF), Vitest `lib/` + `hooks/` + **webhook route test**, **`CORPUS_REPOS`** con **health-wand-and-fire**
 
 ---
 
@@ -499,6 +520,10 @@ npm run build
 - **SSE ingest da browser: no `EventSource`**: per `/api/rag/ingest-stream` lato client non basta `EventSource`, perché serve una `POST` con body; il flusso va letto via `fetch` + `ReadableStream` parser. Vedi AI_LOG Fase 6 (commit `fb4e5d2`, `55edbbc`).
 
 - **Chat deve degradare senza RAG**: in `app/api/chat/route.ts` il retrieve RAG è in fallback silenzioso, per evitare 500 quando vector store/env non sono disponibili. Se si rimuove questo comportamento, la chat può rompersi per guasti temporanei del layer RAG (fix `2001d4a`, consolidato `9ba4c05`).
+
+- **Webhook GitHub**: l’ingest avviata da **`/api/webhooks/github`** non è `await` nella route; errori in background vanno solo in log. Se Vercel termina l’istanza subito dopo la risposta 200, valutare `waitUntil` / queue (oggi assunto: sufficiente per fire-and-forget in produzione).
+
+- **Vitest + `process.env` (admin-session)**: test che vogliono un env “assente” non possono basarsi solo su `vi.unstubAllEnvs()` se nel processo esiste già `ADMIN_SESSION_SECRET` (CI/shell/IDE). Vedi nota sotto **Testing** e `lib/admin-session.test.ts`.
 
 - **Runtime route chat: `nodejs` + `maxDuration`**: la route chat combina streaming SSE e chiamate esterne legate al retrieval; è documentato l'uso di runtime Node con `maxDuration` 60 per stabilità operativa. Prima di cambiare runtime/timeout, verifica i vincoli in AI_LOG Fase 4.
 

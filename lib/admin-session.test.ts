@@ -83,7 +83,10 @@ describe("admin-session (stateless HMAC)", () => {
   });
 
   it("createAdminSession throws without ADMIN_SESSION_SECRET", () => {
-    vi.unstubAllEnvs();
+    // Non usare solo vi.unstubAllEnvs(): ripristina l'env reale del processo; in
+    // locale o CI con variabile già presente (shell, dotenv) il secret resta
+    // valorizzato e getSecret() non lancia. Forziamo mancante/invalido.
+    vi.stubEnv("ADMIN_SESSION_SECRET", "");
     expect(() => createAdminSession()).toThrow(/Missing ADMIN_SESSION_SECRET/);
   });
 });

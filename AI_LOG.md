@@ -16,6 +16,20 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 
 ---
 
+## Aggiornamento 2026-04-27 — Vitest: `admin-session` (segreto mancante)
+
+- **`lib/admin-session.test.ts`**: il test che si aspetta l’`Error` *Missing ADMIN_SESSION_SECRET* usava `vi.unstubAllEnvs()`, che **ripristina l’ambiente reale**; in locale, con `ADMIN_SESSION_SECRET` già impostata, `createAdminSession()` non lanciava e la suite flakkava. Fix: **`vi.stubEnv("ADMIN_SESSION_SECRET", "")`** (equivalente a mancante per `getSecret()` in `lib/admin-session.ts`). Riferimenti: sezione **Testing** in `AGENTS.md` → *Known edge*.
+
+---
+
+## Aggiornamento 2026-04-27 — GitHub `push` → Soli Prof (webhook + `setup-webhooks.sh`)
+
+- **Endpoint** `app/api/webhooks/github/route.ts` (già con Vitest in `app/api/webhooks/github/route.test.ts`): verifica HMAC, ingest selettivo in fire-and-forget, `maxDuration` 60. Su Vercel **`GITHUB_WEBHOOK_SECRET`** deve combaciare con la config del webhook su ogni repo.
+- **13 repo** coperti: `soli-prof` (setup manuale) + 12 con **`scripts/setup-webhooks.sh`** (`GITHUB_PAT` con `admin:repo_hook`, stesso `GITHUB_WEBHOOK_SECRET`); elenco in script: `soli-agent`, `casa-mia-be`, `casa-mia-fe`, `bachelor-party-claudiano`, `solids`, `soli-dm-be`, `soli-dm-fe`, `soli-dome`, `pippify`, `soli-platform`, `koollector`, `health-wand-and-fire`.
+- **Documentazione** aggiornata: `AGENTS.md` (struttura `app/api`, sezione RAG + webhook, env, test, gotchas), `README` (RAG + webhook), `SETUP_GUIDE`, `.env.example` (commento `GITHUB_PAT` opzionale). I repo **consumer** nel workspace elencano la stessa integrazione in `AGENTS.md` / `README` / `AI_LOG` dove presenti.
+
+---
+
 ## Aggiornamento 2026-04-27 — RAG: repo health-wand-and-fire
 
 - **`lib/rag-service/config.ts`**: `CORPUS_REPOS` esteso con **health-wand-and-fire** (owner `soli92`, branch `main`) per **`ai_logs`** e **`agents_md`**, allineato al [repo gioco](https://github.com/soli92/health-wand-and-fire) (Vercel: `health-wand-and-fire.vercel.app`).

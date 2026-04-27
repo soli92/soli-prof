@@ -100,6 +100,10 @@ La **chat principale** (`POST /api/chat`) recupera in parallelo dai tre corpus e
 
 Dopo ogni modifica all’elenco repo, eseguire `npm run rag:ingest` (o ingest da `/admin` in locale) e verificare variabili `VOYAGE_*`, `SUPABASE_*`, `GITHUB_TOKEN` come in `AGENTS.md` e `.env.example`.
 
+### Re-ingest su push (webhook GitHub)
+
+Con **`GITHUB_WEBHOOK_SECRET`** configurato su Vercel, l’API **`POST /api/webhooks/github`** riceve gli eventi `push` dai repository in **CORPUS** (tredici in tutto, inclusi **soli-prof** e i dodici elencati in `scripts/setup-webhooks.sh` su GitHub: `soli-agent`, `casa-mia-be`, `casa-mia-fe`, `bachelor-party-claudiano`, `solids`, `soli-dm-be`, `soli-dm-fe`, `soli-dome`, `pippify`, `soli-platform`, `koollector`, `health-wand-and-fire`). La firma **`X-Hub-Signature-256`** viene verificata; parte un **re-ingest selettivo** in background (i dettagli sono in **`AGENTS.md`**, sezione *POST /api/webhooks/github*). Per **creare** o ripristinare i webhook sull’org serve uno script con PAT (`admin:repo_hook`): vedi `scripts/setup-webhooks.sh` e le variabili d’ambiente in **`AGENTS.md`**.
+
 ## Tecnologie principali
 
 ### Next.js 16 + TypeScript
@@ -162,7 +166,7 @@ npm run build
 # Type check
 npm run type-check
 
-# Test unitari (Vitest — rag-service, RRF query.test, admin-session, hooks)
+# Test unitari (Vitest — rag-service, RRF, admin-session con note env in AGENTS.md, hooks, webhook)
 npm test
 
 # Lint

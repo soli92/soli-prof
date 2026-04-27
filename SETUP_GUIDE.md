@@ -108,7 +108,7 @@ Se il build passa senza errori, sei pronto per il deploy.
 
 Vercel scaricherà la repo, farà build e deploierà. Riceverai un URL tipo `https://soli-prof.vercel.app`.
 
-Se usi **RAG** (Voyage, Supabase, `GITHUB_TOKEN`), aggiungi anche le variabili da **`.env.example`**. I repository sorgente per l’ingest (`AI_LOG.md` / `AGENTS.md`) sono elencati in **`lib/rag-service/config.ts`** come `CORPUS_REPOS` (incluso ad es. **health-wand-and-fire**). Dopo ogni modifica a quell’elenco, in locale: `npm run rag:ingest` oppure pagina **`/admin`**.
+Se usi **RAG** (Voyage, Supabase, `GITHUB_TOKEN`), aggiungi anche le variabili da **`.env.example`**, incluso **`GITHUB_WEBHOOK_SECRET`** se vuoi l’ingest attivato dai **push** GitHub (endpoint **`/api/webhooks/github`** in produzione; verifica HMAC, vedi `AGENTS.md`). I repository sorgente per l’ingest (`AI_LOG.md` / `AGENTS.md`) sono elencati in **`lib/rag-service/config.ts`** come `CORPUS_REPOS` (incluso ad es. **health-wand-and-fire**). Dopo ogni modifica a quell’elenco, in locale: `npm run rag:ingest` oppure pagina **`/admin`**. Per **registrare** i webhook sui repo GitHub, operazione one-off: **`scripts/setup-webhooks.sh`** con `GITHUB_PAT` (scope `admin:repo_hook`) e lo stesso secret; non è necessario per un semplice deploy.
 
 ### Opzione B: Via CLI
 
