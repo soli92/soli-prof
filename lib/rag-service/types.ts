@@ -35,7 +35,10 @@ export interface ConfigSource {
 export interface CorpusRegistryEntry {
   sourceFileName: string | null;
   supabaseTable: string;
+  /** Vector cosine similarity (semantic). */
   matchFunction: string;
+  /** Text search (ts_rank / BM25-like) su `content_tsv`. */
+  matchFunctionText: string;
   description: string;
 }
 

@@ -52,6 +52,7 @@ export const CORPUS_REGISTRY: Record<CorpusId, CorpusConfig> = {
     sourceFileName: "AI_LOG.md",
     supabaseTable: "rag_ai_logs",
     matchFunction: "match_rag_ai_logs",
+    matchFunctionText: "match_rag_ai_logs_text",
   },
   agents_md: {
     id: "agents_md",
@@ -59,12 +60,14 @@ export const CORPUS_REGISTRY: Record<CorpusId, CorpusConfig> = {
     sourceFileName: "AGENTS.md",
     supabaseTable: "rag_agents_md",
     matchFunction: "match_rag_agents_md",
+    matchFunctionText: "match_rag_agents_md_text",
   },
   repo_configs: {
     id: "repo_configs",
     sourceFileName: null,
     supabaseTable: "rag_repo_configs",
     matchFunction: "match_rag_repo_configs",
+    matchFunctionText: "match_rag_repo_configs_text",
     description:
       "Configuration files (package.json, tsconfig.json, GitHub workflows, etc.)",
   },

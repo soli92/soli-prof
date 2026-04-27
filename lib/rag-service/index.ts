@@ -18,6 +18,9 @@ export {
 export { rerank, type RerankResult } from "./reranker";
 
 export {
+  upsertChunks,
+  searchSimilar,
+  searchSimilarText,
   countCorpus,
 } from "./store";
 

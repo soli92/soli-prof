@@ -25,9 +25,11 @@ describe("CORPUS_REGISTRY", () => {
     expect(CORPUS_REGISTRY.ai_logs.id).toBe("ai_logs");
     expect(CORPUS_REGISTRY.ai_logs.supabaseTable).toBe("rag_ai_logs");
     expect(CORPUS_REGISTRY.ai_logs.matchFunction).toBe("match_rag_ai_logs");
+    expect(CORPUS_REGISTRY.ai_logs.matchFunctionText).toBe("match_rag_ai_logs_text");
     expect(CORPUS_REGISTRY.agents_md.sourceFileName).toBe("AGENTS.md");
     expect(CORPUS_REGISTRY.agents_md.supabaseTable).toBe("rag_agents_md");
     expect(CORPUS_REGISTRY.agents_md.matchFunction).toBe("match_rag_agents_md");
+    expect(CORPUS_REGISTRY.agents_md.matchFunctionText).toBe("match_rag_agents_md_text");
   });
 
   it("CORPUS_REGISTRY include repo_configs con sourceFileName null", () => {
@@ -35,6 +37,7 @@ describe("CORPUS_REGISTRY", () => {
     expect(CORPUS_REGISTRY.repo_configs.sourceFileName).toBeNull();
     expect(CORPUS_REGISTRY.repo_configs.supabaseTable).toBe("rag_repo_configs");
     expect(CORPUS_REGISTRY.repo_configs.matchFunction).toBe("match_rag_repo_configs");
+    expect(CORPUS_REGISTRY.repo_configs.matchFunctionText).toBe("match_rag_repo_configs_text");
   });
 
   it("keys match CorpusId entries", () => {

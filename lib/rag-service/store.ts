@@ -91,6 +91,51 @@ export async function searchSimilar(
 }
 
 /**
+ * Text-based similarity search su un corpus specifico (BM25-like via ts_rank).
+ * Usa la RPC `match_rag_X_text` che lavora su `content_tsv` (tsvector).
+ *
+ * Differenze rispetto a `searchSimilar` (semantic):
+ * - Input: testo della query (non embedding)
+ * - Output: stessa shape `RetrievedChunk[]` ma `similarity` è ts_rank (0.05–0.3 tipici)
+ * - No embedding API call: tutto in DB
+ */
+export async function searchSimilarText(
+  corpus: CorpusId,
+  queryText: string,
+  topK: number
+): Promise<RetrievedChunk[]> {
+  const { matchFunctionText } = CORPUS_REGISTRY[corpus];
+  const client = getClient();
+
+  const filterByVersion = process.env.RAG_FILTER_BY_VERSION !== "false";
+  const rpcArgs: {
+    query_text: string;
+    match_count: number;
+    target_corpus_version?: string;
+  } = {
+    query_text: queryText,
+    match_count: topK,
+  };
+  if (filterByVersion) {
+    rpcArgs.target_corpus_version = CURRENT_CORPUS_VERSION;
+  }
+
+  const { data, error } = await client.rpc(matchFunctionText, rpcArgs);
+
+  if (error) {
+    throw new StoreError(`RPC ${matchFunctionText} failed: ${error.message}`);
+  }
+
+  if (!Array.isArray(data)) {
+    throw new StoreError(
+      `RPC ${matchFunctionText} returned non-array: ${typeof data}`
+    );
+  }
+
+  return data as RetrievedChunk[];
+}
+
+/**
  * Conta righe nella tabella del corpus (utile per health check / report).
  */
 export async function countCorpus(corpus: CorpusId): Promise<number> {
