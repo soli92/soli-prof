@@ -53,7 +53,12 @@ interface RepoStat {
 }
 
 async function dryRunCorpus(corpus: CorpusId): Promise<RepoStat[]> {
-  const { sourceFileName } = CORPUS_REGISTRY[corpus];
+  const entry = CORPUS_REGISTRY[corpus];
+  if (entry.sourceFileName === null) {
+    console.log(`\n⏭  Corpus "${corpus}" — dry-run single-file non applicabile (multi-source).\n`);
+    return [];
+  }
+  const sourceFileName = entry.sourceFileName;
   const repos = CORPUS_REPOS[corpus];
   const stats: RepoStat[] = [];
   const indexedAt = new Date().toISOString();

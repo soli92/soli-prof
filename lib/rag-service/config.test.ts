@@ -4,6 +4,7 @@ import {
   CORPUS_REPOS,
   CURRENT_CHUNKER_VERSION,
   CURRENT_CORPUS_VERSION,
+  DEFAULT_CONFIG_SOURCES,
   RAG_CONFIG,
   requireEnv,
 } from "./config";
@@ -20,13 +21,20 @@ describe("version constants", () => {
 });
 
 describe("CORPUS_REGISTRY", () => {
-  it("defines two corpora with distinct tables and match RPC names", () => {
+  it("defines corpora with distinct tables and match RPC names", () => {
     expect(CORPUS_REGISTRY.ai_logs.id).toBe("ai_logs");
     expect(CORPUS_REGISTRY.ai_logs.supabaseTable).toBe("rag_ai_logs");
     expect(CORPUS_REGISTRY.ai_logs.matchFunction).toBe("match_rag_ai_logs");
     expect(CORPUS_REGISTRY.agents_md.sourceFileName).toBe("AGENTS.md");
     expect(CORPUS_REGISTRY.agents_md.supabaseTable).toBe("rag_agents_md");
     expect(CORPUS_REGISTRY.agents_md.matchFunction).toBe("match_rag_agents_md");
+  });
+
+  it("CORPUS_REGISTRY include repo_configs con sourceFileName null", () => {
+    expect(CORPUS_REGISTRY.repo_configs).toBeDefined();
+    expect(CORPUS_REGISTRY.repo_configs.sourceFileName).toBeNull();
+    expect(CORPUS_REGISTRY.repo_configs.supabaseTable).toBe("rag_repo_configs");
+    expect(CORPUS_REGISTRY.repo_configs.matchFunction).toBe("match_rag_repo_configs");
   });
 
   it("keys match CorpusId entries", () => {
@@ -40,12 +48,30 @@ describe("CORPUS_REPOS", () => {
   it("lists at least one repo per corpus", () => {
     expect(CORPUS_REPOS.ai_logs.length).toBeGreaterThan(0);
     expect(CORPUS_REPOS.agents_md.length).toBeGreaterThan(0);
+    expect(CORPUS_REPOS.repo_configs.length).toBeGreaterThan(0);
+  });
+
+  it("CORPUS_REPOS.repo_configs ha 13 repo", () => {
+    expect(CORPUS_REPOS.repo_configs).toHaveLength(13);
+    expect(CORPUS_REPOS.repo_configs.every((r) => r.owner === "soli92")).toBe(true);
   });
 
   it("includes health-wand-and-fire in both corpora (ai_logs + agents_md)", () => {
     const target = { owner: "soli92", repo: "health-wand-and-fire", branch: "main" };
     expect(CORPUS_REPOS.ai_logs).toContainEqual(target);
     expect(CORPUS_REPOS.agents_md).toContainEqual(target);
+  });
+});
+
+describe("DEFAULT_CONFIG_SOURCES", () => {
+  it("include i 6 fileType attesi", () => {
+    const fileTypes = new Set(DEFAULT_CONFIG_SOURCES.map((s) => s.fileType));
+    expect(fileTypes.has("package-json")).toBe(true);
+    expect(fileTypes.has("tsconfig")).toBe(true);
+    expect(fileTypes.has("github-workflow")).toBe(true);
+    expect(fileTypes.has("prisma-schema")).toBe(true);
+    expect(fileTypes.has("env-example")).toBe(true);
+    expect(fileTypes.has("generic-config")).toBe(true);
   });
 });
 

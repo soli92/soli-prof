@@ -23,8 +23,28 @@ export async function ingestCorpus(
   options: IngestOptions = {}
 ): Promise<IngestReport> {
   const startedAt = Date.now();
-  const { sourceFileName } = CORPUS_REGISTRY[corpus];
+  const registryEntry = CORPUS_REGISTRY[corpus];
   const repos = CORPUS_REPOS[corpus];
+
+  if (registryEntry.sourceFileName === null) {
+    options.onProgress?.({ type: "start", corpus, totalRepos: repos.length });
+    options.onProgress?.({
+      type: "complete",
+      corpus,
+      totalRepos: repos.length,
+      totalChunks: 0,
+      elapsedMs: Date.now() - startedAt,
+    });
+    return {
+      corpus,
+      totalRepos: repos.length,
+      totalChunks: 0,
+      byRepo: {},
+      elapsedMs: Date.now() - startedAt,
+    };
+  }
+
+  const sourceFileName = registryEntry.sourceFileName;
 
   console.log(chalk.cyan(`\n🚀 Ingest corpus "${corpus}" (file: ${sourceFileName})`));
   console.log(chalk.gray(`   ${repos.length} repos to process\n`));

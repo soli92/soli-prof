@@ -4,15 +4,45 @@
  * questi tipi restano stabili e diventano la base del client SDK.
  */
 
-export type CorpusId = "ai_logs" | "agents_md";
+export type CorpusId = "ai_logs" | "agents_md" | "repo_configs";
 
-export interface CorpusConfig {
-  id: CorpusId;
-  description: string;
-  sourceFileName: string;
+/**
+ * Descrive un file specifico da indicizzare nel corpus repo_configs.
+ * Diversamente da ai_logs/agents_md che hanno UN solo file per repo
+ * (AI_LOG.md, AGENTS.md), repo_configs indicizza N file per repo.
+ */
+export interface ConfigSource {
+  /**
+   * Pattern di filename relativo alla root del repo.
+   * Supporta glob semplici (es. ".github/workflows/*.yml").
+   * NOTA: implementazione del glob arriva nel sub-step 3.4.
+   */
+  pattern: string;
+
+  /**
+   * Tipo di file. Determina quale ChunkStrategy verrà usata.
+   */
+  fileType:
+    | "package-json"
+    | "tsconfig"
+    | "github-workflow"
+    | "prisma-schema"
+    | "env-example"
+    | "generic-config";
+}
+
+/** Voce registry corpus: tabella Supabase, RPC match, file singolo o multi. */
+export interface CorpusRegistryEntry {
+  sourceFileName: string | null;
   supabaseTable: string;
   matchFunction: string;
+  description: string;
 }
+
+export type CorpusConfig =
+  | (CorpusRegistryEntry & { id: "ai_logs"; sourceFileName: string })
+  | (CorpusRegistryEntry & { id: "agents_md"; sourceFileName: string })
+  | (CorpusRegistryEntry & { id: "repo_configs"; sourceFileName: null });
 
 /** Metadati persistiti con ogni chunk (JSONB + colonne dedicate in Supabase). */
 export interface ChunkMetadata {

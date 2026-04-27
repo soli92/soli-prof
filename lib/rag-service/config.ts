@@ -4,7 +4,7 @@
  */
 
 import { MissingEnvError } from "./errors";
-import type { CorpusConfig, CorpusId, RepoTarget } from "./types";
+import type { ConfigSource, CorpusConfig, CorpusId, RepoTarget } from "./types";
 
 /**
  * Corpus version: incrementare quando si vuole invalidare retroattivamente
@@ -23,6 +23,28 @@ export const CURRENT_CORPUS_VERSION = "v1";
  */
 export const CURRENT_CHUNKER_VERSION = "markdown-v2.1";
 
+/**
+ * File pattern indicizzati di default per il corpus repo_configs.
+ * Ogni RepoTarget di repo_configs userà questi pattern, salvo override.
+ *
+ * NOTA: i file che non esistono in un repo sono ignorati silenziosamente
+ * (vedi sub-step 3.4 fetch logic).
+ */
+export const DEFAULT_CONFIG_SOURCES: ConfigSource[] = [
+  { pattern: "package.json", fileType: "package-json" },
+  { pattern: "tsconfig.json", fileType: "tsconfig" },
+  { pattern: ".github/workflows/*.yml", fileType: "github-workflow" },
+  { pattern: ".github/workflows/*.yaml", fileType: "github-workflow" },
+  { pattern: "prisma/schema.prisma", fileType: "prisma-schema" },
+  { pattern: ".env.example", fileType: "env-example" },
+  { pattern: "next.config.js", fileType: "generic-config" },
+  { pattern: "next.config.ts", fileType: "generic-config" },
+  { pattern: "vite.config.ts", fileType: "generic-config" },
+  { pattern: "vite.config.js", fileType: "generic-config" },
+  { pattern: "tailwind.config.ts", fileType: "generic-config" },
+  { pattern: "tailwind.config.js", fileType: "generic-config" },
+];
+
 export const CORPUS_REGISTRY: Record<CorpusId, CorpusConfig> = {
   ai_logs: {
     id: "ai_logs",
@@ -37,6 +59,14 @@ export const CORPUS_REGISTRY: Record<CorpusId, CorpusConfig> = {
     sourceFileName: "AGENTS.md",
     supabaseTable: "rag_agents_md",
     matchFunction: "match_rag_agents_md",
+  },
+  repo_configs: {
+    id: "repo_configs",
+    sourceFileName: null,
+    supabaseTable: "rag_repo_configs",
+    matchFunction: "match_rag_repo_configs",
+    description:
+      "Configuration files (package.json, tsconfig.json, GitHub workflows, etc.)",
   },
 };
 
@@ -75,6 +105,21 @@ export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {
     { owner: "soli92", repo: "koollector", branch: "main" },
   ],
   agents_md: [
+    { owner: "soli92", repo: "soli-agent", branch: "main" },
+    { owner: "soli92", repo: "casa-mia-be", branch: "main" },
+    { owner: "soli92", repo: "casa-mia-fe", branch: "main" },
+    { owner: "soli92", repo: "bachelor-party-claudiano", branch: "main" },
+    { owner: "soli92", repo: "solids", branch: "main" },
+    { owner: "soli92", repo: "soli-prof", branch: "main" },
+    { owner: "soli92", repo: "soli-dm-be", branch: "main" },
+    { owner: "soli92", repo: "soli-dm-fe", branch: "main" },
+    { owner: "soli92", repo: "soli-dome", branch: "main" },
+    { owner: "soli92", repo: "pippify", branch: "main" },
+    { owner: "soli92", repo: "soli-platform", branch: "main" },
+    { owner: "soli92", repo: "koollector", branch: "main" },
+    { owner: "soli92", repo: "health-wand-and-fire", branch: "main" },
+  ],
+  repo_configs: [
     { owner: "soli92", repo: "soli-agent", branch: "main" },
     { owner: "soli92", repo: "casa-mia-be", branch: "main" },
     { owner: "soli92", repo: "casa-mia-fe", branch: "main" },
