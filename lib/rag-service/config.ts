@@ -54,7 +54,7 @@ export const RAG_CONFIG = {
   // Valore alto = mostra solo fonti di cui siamo confidenti.
   // Asimmetrico rispetto al context: il LLM può vedere chunk marginali
   // che non mostriamo all'utente, evitando di ingannarlo su "fonti" incerte.
-  similarityThresholdForSources: 0.40,
+  similarityThresholdForSources: 0.30,
 };
 
 export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {
