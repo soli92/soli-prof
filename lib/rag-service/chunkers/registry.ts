@@ -1,7 +1,21 @@
+import { EnvExampleChunkStrategy } from "./env-example";
+import { GenericConfigChunkStrategy } from "./generic-config";
+import { GithubWorkflowChunkStrategy } from "./github-workflow";
 import { MarkdownChunkStrategy } from "./markdown";
+import { PackageJsonChunkStrategy } from "./package-json";
+import { PrismaSchemaChunkStrategy } from "./prisma-schema";
+import { TsconfigChunkStrategy } from "./tsconfig";
 import type { ChunkStrategy } from "./types";
 
-const strategies: ChunkStrategy[] = [new MarkdownChunkStrategy()];
+const strategies: ChunkStrategy[] = [
+  new MarkdownChunkStrategy(),
+  new PackageJsonChunkStrategy(),
+  new TsconfigChunkStrategy(),
+  new GithubWorkflowChunkStrategy(),
+  new PrismaSchemaChunkStrategy(),
+  new EnvExampleChunkStrategy(),
+  new GenericConfigChunkStrategy(),
+];
 
 /**
  * Restituisce la strategia che gestisce il filename dato.

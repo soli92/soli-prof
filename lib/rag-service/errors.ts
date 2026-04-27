@@ -12,7 +12,9 @@ export class RagServiceError extends Error {
 
 export class CorpusNotFoundError extends RagServiceError {
   constructor(corpus: string) {
-    super(`Unknown corpus: "${corpus}". Valid options: ai_logs, agents_md.`);
+    super(
+      `Unknown corpus: "${corpus}". Valid options: ai_logs, agents_md, repo_configs.`
+    );
     this.name = "CorpusNotFoundError";
   }
 }

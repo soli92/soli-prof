@@ -21,6 +21,9 @@ export {
 export {
   CORPUS_REGISTRY,
   CORPUS_REPOS,
+  CURRENT_CHUNKER_VERSION,
+  CURRENT_CORPUS_VERSION,
+  DEFAULT_CONFIG_SOURCES,
   RAG_CONFIG,
 } from "./config";
 
@@ -35,8 +38,10 @@ export {
 } from "./errors";
 
 export type {
+  ConfigSource,
   CorpusId,
   CorpusConfig,
+  CorpusRegistryEntry,
   Chunk,
   ChunkWithEmbedding,
   RetrievedChunk,
