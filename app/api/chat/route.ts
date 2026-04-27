@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, DEFAULT_MODEL } from "@/lib/anthropic";
+import { getAnthropicClient, DEFAULT_MODEL } from "@/lib/anthropic";
 import { getRAGSystemPrompt } from "@/lib/prompts";
 import { queryMultipleCorpora, type RetrievedSource } from "@/lib/rag-service";
 
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
             encoder.encode(`__SOURCES__${sourcesPayload}__END_SOURCES__\n`)
           );
 
-          const response = await anthropic.messages.create({
+          const response = await getAnthropicClient().messages.create({
             model: DEFAULT_MODEL,
             max_tokens: 1024,
             system: getRAGSystemPrompt(retrievedContext),

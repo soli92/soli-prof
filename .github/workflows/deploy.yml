@@ -1,17 +1,19 @@
-name: Deploy to Vercel
+name: CI
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  ci:
     runs-on: ubuntu-latest
-    
+
     env:
       NODE_VERSION: 22
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -20,27 +22,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm ci
 
       - name: Type check
         run: npm run type-check
 
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
-
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          production: true
-          scope: soli92
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
