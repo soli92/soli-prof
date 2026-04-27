@@ -2,15 +2,6 @@ name: Setup Webhooks (one-shot)
 
 on:
   workflow_dispatch:
-    inputs:
-      admin_pat:
-        description: 'GitHub PAT with repo scope (admin access to all 12 repos)'
-        required: true
-        type: string
-      webhook_secret:
-        description: 'Webhook secret (same as GITHUB_WEBHOOK_SECRET on Vercel)'
-        required: true
-        type: string
 
 jobs:
   setup-webhooks:
@@ -18,8 +9,8 @@ jobs:
     steps:
       - name: Configure push webhook on all monitored repos
         env:
-          ADMIN_PAT: ${{ inputs.admin_pat }}
-          WEBHOOK_SECRET: ${{ inputs.webhook_secret }}
+          ADMIN_PAT: ${{ secrets.GITHUB_TOKEN }}
+          WEBHOOK_SECRET: ${{ secrets.GITHUB_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
 
@@ -45,17 +36,20 @@ jobs:
           echo ""
 
           for REPO in "${REPOS[@]}"; do
-            PAYLOAD=$(printf '{
-              "name": "web",
-              "active": true,
-              "events": ["push"],
-              "config": {
-                "url": "%s",
-                "content_type": "json",
-                "secret": "%s",
-                "insecure_ssl": "0"
-              }
-            }' "$WEBHOOK_ENDPOINT" "$WEBHOOK_SECRET")
+            BODY=$(jq -n \
+              --arg url "$WEBHOOK_ENDPOINT" \
+              --arg secret "$WEBHOOK_SECRET" \
+              '{
+                name: "web",
+                active: true,
+                events: ["push"],
+                config: {
+                  url: $url,
+                  content_type: "json",
+                  secret: $secret,
+                  insecure_ssl: "0"
+                }
+              }')
 
             HTTP_STATUS=$(curl -s -o /tmp/resp_body.json -w "%{http_code}" \
               -X POST \
@@ -64,14 +58,14 @@ jobs:
               -H "Content-Type: application/json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               -H "User-Agent: soli-webhook-setup" \
-              -d "$PAYLOAD" \
+              -d "$BODY" \
               "https://api.github.com/repos/soli92/${REPO}/hooks")
 
             RESP_BODY=$(cat /tmp/resp_body.json)
             HOOK_ID="-"
 
             if [ "$HTTP_STATUS" = "201" ]; then
-              HOOK_ID=$(python3 -c "import sys,json; d=json.loads('''${RESP_BODY}'''); print(d.get('id','-'))" 2>/dev/null || echo "-")
+              HOOK_ID=$(echo "$RESP_BODY" | jq -r '.id // "-"')
               OUTCOME="[OK] created"
             elif [ "$HTTP_STATUS" = "422" ] && echo "$RESP_BODY" | grep -q "Hook already exists"; then
               OUTCOME="[SKIP] already_exists"
@@ -83,10 +77,10 @@ jobs:
             elif [ "$HTTP_STATUS" = "404" ]; then
               OUTCOME="[ERR] 404 not found / no permissions"
             elif [ "$HTTP_STATUS" = "422" ]; then
-              MSG=$(python3 -c "import sys,json; d=json.loads(sys.stdin.read()); errs=d.get('errors',[]); print((errs[0].get('message','') if errs else d.get('message',''))[:60])" 2>/dev/null <<< "$RESP_BODY" || echo "unknown 422")
+              MSG=$(echo "$RESP_BODY" | jq -r '.errors[0].message // .message // "unknown 422"' | cut -c1-60)
               OUTCOME="[WARN] 422: ${MSG}"
             else
-              MSG=$(python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(str(d.get('message',''))[:60])" 2>/dev/null <<< "$RESP_BODY" || echo "unknown")
+              MSG=$(echo "$RESP_BODY" | jq -r '.message // "unknown"' | cut -c1-60)
               OUTCOME="[ERR] ${HTTP_STATUS}: ${MSG}"
             fi
 
