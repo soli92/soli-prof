@@ -43,7 +43,14 @@ function makeRequest(body: string, sig: string | null): NextRequest {
 describe("POST /api/webhooks/github", () => {
   beforeEach(() => {
     process.env.GITHUB_WEBHOOK_SECRET = SECRET;
-    (ingestCorpus as ReturnType<typeof vi.fn>).mockClear();
+    const fn = ingestCorpus as ReturnType<typeof vi.fn>;
+    fn.mockReset();
+    fn.mockResolvedValue({
+      corpus: "ai_logs",
+      totalChunks: 0,
+      byRepo: {},
+      durationMs: 0,
+    });
   });
 
   it("rifiuta firma assente con 401", async () => {
@@ -100,11 +107,10 @@ describe("POST /api/webhooks/github", () => {
     const res = await POST(req);
     const json = await res.json();
 
-    expect(json.status).toBe("queued");
+    expect(json.status).toBe("completed");
     expect(json.corpora).toContain("ai_logs");
+    expect(json.ingestSummary).toEqual({ total: 1, succeeded: 1, failed: 0 });
 
-    // Aspetta tick per fire-and-forget
-    await new Promise((r) => setTimeout(r, 50));
     expect(ingestCorpus).toHaveBeenCalledWith(
       "ai_logs",
       expect.objectContaining({
@@ -122,7 +128,6 @@ describe("POST /api/webhooks/github", () => {
     const { body, sig } = signPayload(payload);
     const req = makeRequest(body, sig);
     await POST(req);
-    await new Promise((r) => setTimeout(r, 50));
     expect(ingestCorpus).toHaveBeenCalledWith("agents_md", expect.anything());
   });
 
@@ -135,7 +140,6 @@ describe("POST /api/webhooks/github", () => {
     const { body, sig } = signPayload(payload);
     const req = makeRequest(body, sig);
     await POST(req);
-    await new Promise((r) => setTimeout(r, 50));
     expect(ingestCorpus).toHaveBeenCalledWith("repo_configs", expect.anything());
   });
 
@@ -148,7 +152,6 @@ describe("POST /api/webhooks/github", () => {
     const { body, sig } = signPayload(payload);
     const req = makeRequest(body, sig);
     await POST(req);
-    await new Promise((r) => setTimeout(r, 50));
     expect(ingestCorpus).toHaveBeenCalledWith("repo_configs", expect.anything());
   });
 
@@ -180,5 +183,74 @@ describe("POST /api/webhooks/github", () => {
       expect.arrayContaining(["ai_logs", "agents_md", "repo_configs"])
     );
     expect(res.status).toBe(200);
+    expect(json.status).toBe("completed");
+    expect(json.ingestSummary).toEqual({ total: 3, succeeded: 3, failed: 0 });
+  });
+
+  it("aspetta il completamento di ingestCorpus prima di rispondere (no fire-and-forget)", async () => {
+    let resolveIngest!: (value: unknown) => void;
+    const ingestPromise = new Promise((res) => {
+      resolveIngest = res;
+    });
+
+    (ingestCorpus as ReturnType<typeof vi.fn>).mockImplementation(() => ingestPromise);
+
+    const payload = {
+      ref: "refs/heads/main",
+      repository: { owner: { login: "soli92" }, name: "casa-mia-be" },
+      commits: [{ modified: ["AI_LOG.md"] }],
+    };
+    const { body, sig } = signPayload(payload);
+    const req = makeRequest(body, sig);
+
+    let responseReceived = false;
+    const responsePromise = POST(req).then((res) => {
+      responseReceived = true;
+      return res;
+    });
+
+    await new Promise((r) => setTimeout(r, 100));
+    expect(responseReceived).toBe(false);
+
+    resolveIngest({
+      corpus: "ai_logs",
+      totalChunks: 5,
+      byRepo: { "casa-mia-be": 5 },
+      durationMs: 50,
+    });
+
+    const res = await responsePromise;
+    expect(responseReceived).toBe(true);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.status).toBe("completed");
+    expect(json.ingestSummary).toEqual({ total: 1, succeeded: 1, failed: 0 });
+  });
+
+  it("ritorna ingestSummary con failed > 0 se un corpus throws", async () => {
+    const payload = {
+      ref: "refs/heads/main",
+      repository: { owner: { login: "soli92" }, name: "casa-mia-be" },
+      commits: [{ modified: ["AI_LOG.md", "AGENTS.md"] }],
+    };
+
+    (ingestCorpus as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        corpus: "ai_logs",
+        totalChunks: 5,
+        byRepo: {},
+        durationMs: 100,
+      })
+      .mockRejectedValueOnce(new Error("fetch failed"));
+
+    const { body, sig } = signPayload(payload);
+    const req = makeRequest(body, sig);
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.status).toBe("completed");
+    expect(json.ingestSummary).toEqual({ total: 2, succeeded: 1, failed: 1 });
   });
 });

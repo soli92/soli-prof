@@ -5,9 +5,9 @@
  * Verifica HMAC, parsa il payload, determina quali corpus reindicizzare
  * in base ai file cambiati, e triggera ingestCorpus selettivo.
  *
- * Pattern: risposta 200 OK immediata, ingest fire-and-forget (no await).
- * GitHub retry-a 1-2 volte se non riceve risposta entro 10s, quindi non
- * blocchiamo. Eventuali errori loggati ma non riportati al webhook caller.
+ * Pattern: ingest sincrono con await prima della risposta 200 (serverless
+ * Vercel termina la function al return; fire-and-forget non completava).
+ * GitHub timeout webhook 10s con retry; idempotenza upsert su ingest.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -19,7 +19,7 @@ import {
 } from "@/lib/rag-service";
 import type { CorpusId, RepoTarget } from "@/lib/rag-service";
 
-export const maxDuration = 60; // Vercel: 60s per ingest fire-and-forget
+export const maxDuration = 60; // Vercel: fino a 60s per ingest prima della risposta
 
 /**
  * Verifica firma HMAC del payload GitHub.
@@ -204,20 +204,40 @@ export async function POST(req: NextRequest) {
 
   const target: RepoTarget = { owner, repo, branch: "main" };
 
-  // Fire-and-forget: avvia ingest senza await, log errori
-  for (const corpus of corpora) {
-    ingestCorpus(corpus, { targetRepos: [target] }).catch((err) => {
+  // Ingest SINCRONO prima di rispondere. Pattern fire-and-forget
+  // non funziona su Vercel serverless (function killata al return).
+  // GitHub webhook timeout: 10s. Per repo singolo tipicamente staiamo
+  // sotto i 7s. Se sforiamo, GitHub ritenta — idempotenza upsert
+  // garantisce no double-ingest.
+  const ingestResults = await Promise.allSettled(
+    corpora.map((corpus) =>
+      ingestCorpus(corpus, { targetRepos: [target] })
+    )
+  );
+
+  const successes = ingestResults.filter((r) => r.status === "fulfilled").length;
+  const failures = ingestResults
+    .map((r, i) => ({ corpus: corpora[i], result: r }))
+    .filter((x) => x.result.status === "rejected");
+
+  if (failures.length > 0) {
+    for (const { corpus, result } of failures) {
       console.error(
         `[webhook] ingest failed corpus=${corpus} repo=${owner}/${repo}:`,
-        err
+        (result as PromiseRejectedResult).reason
       );
-    });
+    }
   }
 
   return NextResponse.json({
-    status: "queued",
+    status: "completed",
     repo: `${owner}/${repo}`,
     corpora,
     filesChanged: changedFiles.size,
+    ingestSummary: {
+      total: corpora.length,
+      succeeded: successes,
+      failed: failures.length,
+    },
   });
 }
