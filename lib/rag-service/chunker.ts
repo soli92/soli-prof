@@ -6,7 +6,8 @@
  */
 
 import crypto from "crypto";
-import type { Chunk } from "./types";
+import { CURRENT_CHUNKER_VERSION, CURRENT_CORPUS_VERSION } from "./config";
+import type { Chunk, ChunkMetadata } from "./types";
 
 const MIN_LIST_ITEMS_FOR_SPLIT = 3;
 const MIN_BULLET_CHARS = 50;
@@ -16,9 +17,19 @@ const MAX_LIST_PARENT_HEADING_CHARS = 200;
 function stableId(repo: string, section: string, content: string): string {
   return crypto
     .createHash("sha256")
-    .update(`${repo}::${section}::${content}`)
+    .update(
+      `${repo}::${section}::${content}::${CURRENT_CHUNKER_VERSION}::${CURRENT_CORPUS_VERSION}`
+    )
     .digest("hex")
     .slice(0, 16);
+}
+
+function buildChunkMetadata(meta: ChunkerMetadata): ChunkMetadata {
+  return {
+    ...meta,
+    chunkerVersion: CURRENT_CHUNKER_VERSION,
+    corpusVersion: CURRENT_CORPUS_VERSION,
+  };
 }
 
 interface ChunkerMetadata {
@@ -158,7 +169,7 @@ export function chunkMarkdown(
         repo: metadata.repo,
         section,
         content: part,
-        metadata: { ...metadata },
+        metadata: buildChunkMetadata(metadata),
       });
     }
   };
@@ -201,7 +212,7 @@ export function chunkMarkdown(
         repo: metadata.repo,
         section: currentSection,
         content: part,
-        metadata: { ...metadata },
+        metadata: buildChunkMetadata(metadata),
       });
     }
   };

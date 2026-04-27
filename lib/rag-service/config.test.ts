@@ -1,6 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { CORPUS_REGISTRY, CORPUS_REPOS, RAG_CONFIG, requireEnv } from "./config";
+import {
+  CORPUS_REGISTRY,
+  CORPUS_REPOS,
+  CURRENT_CHUNKER_VERSION,
+  CURRENT_CORPUS_VERSION,
+  RAG_CONFIG,
+  requireEnv,
+} from "./config";
 import { MissingEnvError } from "./errors";
+
+describe("version constants", () => {
+  it("esporta CURRENT_CORPUS_VERSION e CURRENT_CHUNKER_VERSION come stringhe non vuote", () => {
+    expect(CURRENT_CORPUS_VERSION).toBeTruthy();
+    expect(typeof CURRENT_CORPUS_VERSION).toBe("string");
+    expect(CURRENT_CHUNKER_VERSION).toBeTruthy();
+    expect(typeof CURRENT_CHUNKER_VERSION).toBe("string");
+    expect(CURRENT_CHUNKER_VERSION).toMatch(/^[a-z]+-v\d+(\.\d+)?$/);
+  });
+});
 
 describe("CORPUS_REGISTRY", () => {
   it("defines two corpora with distinct tables and match RPC names", () => {

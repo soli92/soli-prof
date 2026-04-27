@@ -14,12 +14,22 @@ export interface CorpusConfig {
   matchFunction: string;
 }
 
+/** Metadati persistiti con ogni chunk (JSONB + colonne dedicate in Supabase). */
+export interface ChunkMetadata {
+  repo: string;
+  owner: string;
+  branch: string;
+  indexedAt: string;
+  chunkerVersion: string;
+  corpusVersion: string;
+}
+
 export interface Chunk {
   id: string;
   repo: string;
   section: string;
   content: string;
-  metadata: Record<string, unknown>;
+  metadata: ChunkMetadata;
 }
 
 export interface ChunkWithEmbedding extends Chunk {

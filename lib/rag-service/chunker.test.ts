@@ -48,7 +48,36 @@ describe("chunkMarkdown", () => {
       owner: "soli92",
       branch: "main",
       indexedAt: meta.indexedAt,
+      chunkerVersion: "markdown-v2.1",
+      corpusVersion: "v1",
     });
+  });
+
+  it("aggiunge chunkerVersion e corpusVersion ai metadata", () => {
+    const chunks = chunkMarkdown("# Title\n\nSome content here.", {
+      repo: "test",
+      owner: "owner",
+      branch: "main",
+      indexedAt: "2026-01-01",
+    });
+    expect(chunks[0].metadata.chunkerVersion).toBe("markdown-v2.1");
+    expect(chunks[0].metadata.corpusVersion).toBe("v1");
+  });
+
+  it("stableId non dipende da indexedAt: stesso body stesso id tra giorni diversi", () => {
+    const chunksA = chunkMarkdown("# Title\n\nSame content.", {
+      repo: "test",
+      owner: "owner",
+      branch: "main",
+      indexedAt: "2026-01-01",
+    });
+    const chunksB = chunkMarkdown("# Title\n\nSame content.", {
+      repo: "test",
+      owner: "owner",
+      branch: "main",
+      indexedAt: "2026-01-02",
+    });
+    expect(chunksA[0].id).toBe(chunksB[0].id);
   });
 
   it("splits oversized sections using maxChars and paragraph boundaries", () => {

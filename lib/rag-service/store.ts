@@ -7,7 +7,7 @@
  */
 
 import { createClient as createSupabase, type SupabaseClient } from "@supabase/supabase-js";
-import { CORPUS_REGISTRY, requireEnv } from "./config";
+import { CORPUS_REGISTRY, CURRENT_CORPUS_VERSION, requireEnv } from "./config";
 import { StoreError } from "./errors";
 import type { ChunkWithEmbedding, CorpusId, RetrievedChunk } from "./types";
 
@@ -41,6 +41,8 @@ export async function upsertChunks(
     metadata: c.metadata,
     embedding: c.embedding,
     updated_at: new Date().toISOString(),
+    chunker_version: c.metadata.chunkerVersion,
+    corpus_version: c.metadata.corpusVersion,
   }));
 
   const client = getClient();
@@ -62,10 +64,20 @@ export async function searchSimilar(
   const { matchFunction } = CORPUS_REGISTRY[corpus];
   const client = getClient();
 
-  const { data, error } = await client.rpc(matchFunction, {
+  const filterByVersion = process.env.RAG_FILTER_BY_VERSION !== "false";
+  const rpcArgs: {
+    query_embedding: number[];
+    match_count: number;
+    target_corpus_version?: string;
+  } = {
     query_embedding: queryEmbedding,
     match_count: topK,
-  });
+  };
+  if (filterByVersion) {
+    rpcArgs.target_corpus_version = CURRENT_CORPUS_VERSION;
+  }
+
+  const { data, error } = await client.rpc(matchFunction, rpcArgs);
 
   if (error) {
     throw new StoreError(`RPC ${matchFunction} failed: ${error.message}`);

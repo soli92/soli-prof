@@ -6,6 +6,23 @@
 import { MissingEnvError } from "./errors";
 import type { CorpusConfig, CorpusId, RepoTarget } from "./types";
 
+/**
+ * Corpus version: incrementare quando si vuole invalidare retroattivamente
+ * tutti i chunk esistenti (es. cambio embedding model, cambio schema profondo).
+ * Le RPC di retrieval filtrano per CURRENT_CORPUS_VERSION.
+ */
+export const CURRENT_CORPUS_VERSION = "v1";
+
+/**
+ * Chunker version: incrementare quando si cambia la logica di chunking
+ * in modo che produrrebbe chunk diversi sullo stesso input.
+ * Convenzione: "<strategy>-vMAJOR.MINOR" es. "markdown-v2.1"
+ *
+ * v2.1: contextual retrieval con bullet split + preambolo (sett 2024 pattern)
+ * v2.0: chunking per heading h2/h3 (originale)
+ */
+export const CURRENT_CHUNKER_VERSION = "markdown-v2.1";
+
 export const CORPUS_REGISTRY: Record<CorpusId, CorpusConfig> = {
   ai_logs: {
     id: "ai_logs",
