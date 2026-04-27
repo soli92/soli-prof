@@ -8,6 +8,7 @@
 export {
   ingestCorpus,
   ingestAllCorpora,
+  filterTargetRepos,
 } from "./ingest";
 
 export {
@@ -63,6 +64,7 @@ export type {
   IngestProgressEvent,
   IngestProgressCallback,
   IngestOptions,
+  IngestCorpusOptions,
 } from "./types";
 
 export type { MultiCorpusQueryResult } from "./query";

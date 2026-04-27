@@ -10,14 +10,16 @@ import { selectChunker } from "./chunkers/registry";
 import { CORPUS_REGISTRY, CORPUS_REPOS, DEFAULT_CONFIG_SOURCES } from "./config";
 import { embedTexts } from "./embedder";
 import { fetchTextFile, listDirectoryFiles } from "./github";
+import { RagServiceError } from "./errors";
 import { upsertChunks } from "./store";
 import type {
   Chunk,
   ChunkWithEmbedding,
   ConfigSource,
   CorpusId,
-  IngestOptions,
+  IngestCorpusOptions,
   IngestReport,
+  RepoTarget,
 } from "./types";
 
 /**
@@ -54,13 +56,70 @@ async function expandSourcePattern(
   return filenames.map((name) => (dirPath ? `${dirPath}/${name}` : name));
 }
 
+/**
+ * Intersezione tra i repo del corpus e `targetRepos` (match su owner+repo+branch).
+ * `targetRepos` assente = tutti i repo del corpus. Voci in `targetRepos` non
+ * presenti in `allRepos` non compaiono nel risultato.
+ */
+export function filterTargetRepos(
+  allRepos: RepoTarget[],
+  targetRepos: RepoTarget[] | undefined
+): RepoTarget[] {
+  if (targetRepos === undefined) {
+    return allRepos;
+  }
+  return allRepos.filter((r) =>
+    targetRepos.some(
+      (t) =>
+        t.owner === r.owner && t.repo === r.repo && t.branch === r.branch
+    )
+  );
+}
+
 export async function ingestCorpus(
   corpus: CorpusId,
-  options: IngestOptions = {}
+  options: IngestCorpusOptions = {}
 ): Promise<IngestReport> {
   const startedAt = Date.now();
   const registryEntry = CORPUS_REGISTRY[corpus];
-  const repos = CORPUS_REPOS[corpus];
+  const allRepos = CORPUS_REPOS[corpus];
+
+  if (!allRepos || allRepos.length === 0) {
+    throw new RagServiceError(`No repos configured for corpus ${corpus}`);
+  }
+
+  const repos = filterTargetRepos(allRepos, options.targetRepos);
+
+  if (options.targetRepos && repos.length === 0) {
+    const elapsedMs = Date.now() - startedAt;
+    console.log(
+      chalk.yellow(
+        `⚠  Ingest selettivo: 0 repo nel corpus corrispondono a targetRepos — skip`
+      )
+    );
+    options.onProgress?.({
+      type: "complete",
+      corpus,
+      totalRepos: 0,
+      totalChunks: 0,
+      elapsedMs,
+    });
+    return {
+      corpus,
+      totalRepos: 0,
+      totalChunks: 0,
+      byRepo: {},
+      elapsedMs,
+    };
+  }
+
+  if (options.targetRepos) {
+    console.log(
+      chalk.cyan(
+        `   Ingest selettivo: ${repos.length} repo${repos.length === 1 ? "" : "s"}`
+      )
+    );
+  }
 
   const allChunks: Chunk[] = [];
   const byRepo: Record<string, number> = {};
@@ -308,7 +367,7 @@ export async function ingestCorpus(
  * Ingest tutti i corpus in sequenza. Comodo per rebuild completo.
  */
 export async function ingestAllCorpora(
-  options: IngestOptions = {}
+  options: IngestCorpusOptions = {}
 ): Promise<IngestReport[]> {
   const reports: IngestReport[] = [];
   for (const corpus of Object.keys(CORPUS_REGISTRY) as CorpusId[]) {

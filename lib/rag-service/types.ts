@@ -122,6 +122,28 @@ export type IngestProgressEvent =
 
 export type IngestProgressCallback = (event: IngestProgressEvent) => void;
 
-export interface IngestOptions {
+/**
+ * Opzioni per `ingestCorpus` / `ingestAllCorpora`.
+ */
+export interface IngestCorpusOptions {
   onProgress?: IngestProgressCallback;
+
+  /**
+   * Se presente, ingesta SOLO i repo specificati invece di tutti i repo
+   * del corpus. Usato per ingest selettivo (es. webhook GitHub: re-ingest
+   * solo il repo che ha pushato).
+   *
+   * I repo passati che NON appartengono a CORPUS_REPOS[corpus] vengono
+   * IGNORATI silenziosamente (security: non si possono ingestare repo
+   * arbitrari).
+   *
+   * Default: undefined → ingest di tutti i repo del corpus (comportamento
+   * storico).
+   */
+  targetRepos?: RepoTarget[];
 }
+
+/**
+ * Nome storico, equivalente a {@link IngestCorpusOptions}.
+ */
+export type IngestOptions = IngestCorpusOptions;
