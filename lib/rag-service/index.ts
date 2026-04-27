@@ -15,6 +15,8 @@ export {
   queryMultipleCorpora,
 } from "./query";
 
+export { rerank, type RerankResult } from "./reranker";
+
 export {
   countCorpus,
 } from "./store";
