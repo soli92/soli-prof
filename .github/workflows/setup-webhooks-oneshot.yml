@@ -3,7 +3,9 @@ name: Setup Webhooks (one-shot)
 on:
   push:
     branches:
-      - webhook-setup
+      - main
+    paths:
+      - '.github/webhook-setup-run.txt'
   workflow_dispatch:
 
 jobs:
