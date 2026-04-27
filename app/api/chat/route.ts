@@ -66,11 +66,19 @@ export async function POST(request: NextRequest) {
     let retrievedContext = "";
     let sources: RetrievedSource[] = [];
     try {
+      const hybridEnabled = process.env.RAG_HYBRID_ENABLED === "true";
+      const mode = hybridEnabled ? "hybrid" : "semantic";
+      if (hybridEnabled) {
+        console.log("[RAG] Hybrid search ENABLED (semantic + BM25)");
+      }
+
       const ragResult = await queryMultipleCorpora(
         ["ai_logs", "agents_md", "repo_configs"],
         body.userMessage,
         25,
-        25
+        25,
+        undefined,
+        mode
       );
 
       const originalSourceCount = ragResult.sources.length;

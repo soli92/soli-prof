@@ -5,8 +5,13 @@
 
 import { embedTexts } from "./embedder";
 import { RAG_CONFIG } from "./config";
-import { searchSimilar } from "./store";
-import type { CorpusId, QueryResult, RetrievedSource } from "./types";
+import { searchSimilar, searchSimilarText } from "./store";
+import type {
+  CorpusId,
+  QueryResult,
+  RetrievedChunk,
+  RetrievedSource,
+} from "./types";
 
 const RRF_K = 60;
 
@@ -22,6 +27,21 @@ export interface MultiCorpusQueryResult {
   sources: RetrievedSource[];
   corporaQueried: CorpusId[];
 }
+
+export type RAGQueryMode = "semantic" | "hybrid";
+
+/** Opzioni avanzate per `queryMultipleCorpora` (estensioni senza rompere la signature posizionale). */
+export interface MultiCorpusQueryOptions {
+  topKPerCorpus?: number;
+  topKOutput?: number;
+  mode?: RAGQueryMode;
+}
+
+export type QueryCorpusFn = (
+  corpus: CorpusId,
+  userQuery: string,
+  topK?: number
+) => Promise<QueryResult>;
 
 function extractCommitHash(content: string): string | undefined {
   const match = content.match(COMMIT_HASH_REGEX);
@@ -90,33 +110,137 @@ export async function queryCorpus(
   return { corpus, context, sources };
 }
 
+export type QueryCorpusHybridImpls = {
+  searchSimilarFn?: typeof searchSimilar;
+  searchSimilarTextFn?: typeof searchSimilarText;
+  embedTextsFn?: typeof embedTexts;
+};
+
+/**
+ * Hybrid query su un singolo corpus: fonde semantic search (vector cosine)
+ * e BM25 text search (ts_rank) via Reciprocal Rank Fusion.
+ *
+ * Pattern RRF (Cormack et al. 2009, k=60): chunk presente in entrambi i
+ * ranking ottiene score più alto. Riduce dipendenza da una sola modalità.
+ *
+ * @param corpus corpus target
+ * @param userQuery testo della query utente
+ * @param topK numero finale di risultati (default 25)
+ * @param queryImpls dependency injection per test (default usa funzioni reali)
+ */
+export async function queryCorpusHybrid(
+  corpus: CorpusId,
+  userQuery: string,
+  topK: number = RAG_CONFIG.defaultTopK,
+  queryImpls?: QueryCorpusHybridImpls
+): Promise<QueryResult> {
+  if (!userQuery || userQuery.trim() === "") {
+    return { corpus, context: "", sources: [] };
+  }
+
+  const safeTopK = Math.min(Math.max(topK, 1), RAG_CONFIG.maxTopK);
+  const searchSimilarToUse = queryImpls?.searchSimilarFn ?? searchSimilar;
+  const searchSimilarTextToUse = queryImpls?.searchSimilarTextFn ?? searchSimilarText;
+  const embedTextsToUse = queryImpls?.embedTextsFn ?? embedTexts;
+
+  let semanticResult: RetrievedChunk[] = [];
+  let textResult: RetrievedChunk[] = [];
+
+  try {
+    const [queryEmbedding] = await embedTextsToUse([userQuery], "query");
+    [semanticResult, textResult] = await Promise.all([
+      searchSimilarToUse(corpus, queryEmbedding, safeTopK).catch((err: unknown) => {
+        console.warn(`[queryCorpusHybrid] semantic search failed for ${corpus}:`, err);
+        return [] as RetrievedChunk[];
+      }),
+      searchSimilarTextToUse(corpus, userQuery, safeTopK).catch((err: unknown) => {
+        console.warn(`[queryCorpusHybrid] text search failed for ${corpus}:`, err);
+        return [] as RetrievedChunk[];
+      }),
+    ]);
+  } catch (err: unknown) {
+    console.warn(`[queryCorpusHybrid] embed failed for ${corpus}:`, err);
+    try {
+      textResult = await searchSimilarTextToUse(corpus, userQuery, safeTopK);
+    } catch (textErr: unknown) {
+      console.warn(`[queryCorpusHybrid] text search fallback also failed:`, textErr);
+      return { corpus, context: "", sources: [] };
+    }
+  }
+
+  const aggregate = new Map<string, { score: number; chunk: RetrievedChunk }>();
+
+  semanticResult.forEach((chunk, idx) => {
+    const key = chunk.id;
+    const contribution = 1 / (RRF_K + (idx + 1));
+    aggregate.set(key, { score: contribution, chunk });
+  });
+
+  textResult.forEach((chunk, idx) => {
+    const key = chunk.id;
+    const contribution = 1 / (RRF_K + (idx + 1));
+    const existing = aggregate.get(key);
+    if (existing) {
+      existing.score += contribution;
+      if (chunk.similarity > existing.chunk.similarity) {
+        existing.chunk = chunk;
+      }
+    } else {
+      aggregate.set(key, { score: contribution, chunk });
+    }
+  });
+
+  const sorted = Array.from(aggregate.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, safeTopK);
+
+  const contextFiltered = sorted
+    .map((s) => s.chunk)
+    .filter((c) => c.similarity >= RAG_CONFIG.similarityThresholdForContext);
+
+  const sourcesFiltered = sorted
+    .map((s) => s.chunk)
+    .filter((c) => c.similarity >= RAG_CONFIG.similarityThresholdForSources);
+
+  const context = buildContextString(contextFiltered);
+  const sources: RetrievedSource[] = sourcesFiltered.map((c) => ({
+    repo: c.repo,
+    section: c.section,
+    similarity: c.similarity,
+    preview: c.content.slice(0, 200),
+    commitHash: extractCommitHash(c.content),
+  }));
+
+  return { corpus, context, sources };
+}
+
 /**
  * Interroga N corpus in parallelo e fonde i risultati con Reciprocal Rank Fusion (RRF).
  *
  * RRF score: somma sui corpus `1 / (RRF_K + rank)` con rank 1-based; chunk assente in un corpus → 0.
  * `RRF_K` = 60 (Cormack et al., 2009).
  *
- * @param queryImpl override opzionale di {@link queryCorpus} (solo test).
+ * @param queryImpl override opzionale di {@link queryCorpus} / {@link queryCorpusHybrid} (solo test).
+ * @param mode con `queryImpl` omesso: `"semantic"` usa {@link queryCorpus}, `"hybrid"` usa {@link queryCorpusHybrid}.
  */
 export async function queryMultipleCorpora(
   corpora: CorpusId[],
   query: string,
   topKPerCorpus: number = 25,
   topKOutput: number = 25,
-  queryImpl: (
-    corpus: CorpusId,
-    userQuery: string,
-    topK?: number
-  ) => Promise<QueryResult> = queryCorpus
+  queryImpl?: QueryCorpusFn,
+  mode: RAGQueryMode = "semantic"
 ): Promise<MultiCorpusQueryResult> {
   if (corpora.length === 0) {
     return { context: "", sources: [], corporaQueried: [] };
   }
 
+  const queryFn = queryImpl ?? (mode === "hybrid" ? queryCorpusHybrid : queryCorpus);
+
   const results = await Promise.all(
     corpora.map((corpus) =>
-      queryImpl(corpus, query, topKPerCorpus).catch((err: unknown) => {
-        console.warn(`[queryMultipleCorpora] queryCorpus failed for ${corpus}:`, err);
+      queryFn(corpus, query, topKPerCorpus).catch((err: unknown) => {
+        console.warn(`[queryMultipleCorpora] ${mode} query failed for ${corpus}:`, err);
         return { corpus, context: "", sources: [] } satisfies QueryResult;
       })
     )

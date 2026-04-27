@@ -12,7 +12,12 @@ export {
 
 export {
   queryCorpus,
+  queryCorpusHybrid,
   queryMultipleCorpora,
+  type MultiCorpusQueryOptions,
+  type QueryCorpusFn,
+  type QueryCorpusHybridImpls,
+  type RAGQueryMode,
 } from "./query";
 
 export { rerank, type RerankResult } from "./reranker";
