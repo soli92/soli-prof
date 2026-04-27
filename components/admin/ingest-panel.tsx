@@ -5,7 +5,7 @@ import { useIngestStream, type CorpusId } from "@/hooks/use-ingest-stream";
 import { RepoProgressRow } from "./repo-progress-row";
 import { PhaseIndicator } from "./phase-indicator";
 
-type CorpusChoice = "ai_logs" | "agents_md" | "all";
+type CorpusChoice = "ai_logs" | "agents_md" | "repo_configs" | "all";
 
 interface CorpusButton {
   id: CorpusChoice;
@@ -30,16 +30,25 @@ const CORPUS_BUTTONS: CorpusButton[] = [
     emoji: "🤖",
   },
   {
+    id: "repo_configs",
+    label: "Re-ingest Configs",
+    description:
+      "Indicizza i file di configurazione (package.json, tsconfig, GitHub workflows, ecc).",
+    emoji: "⚙️",
+  },
+  {
     id: "all",
     label: "Re-ingest Tutto",
     description:
-      "Indicizza entrambi i corpus. Usa questo dopo aggiornamenti multipli.",
+      "Indicizza tutti e 3 i corpus (AI_LOG + AGENTS.md + Configs).",
     emoji: "🔁",
   },
 ];
 
 function corpusLabel(corpus: CorpusId): string {
-  return corpus === "ai_logs" ? "AI_LOG" : "AGENTS.md";
+  if (corpus === "ai_logs") return "AI_LOG";
+  if (corpus === "agents_md") return "AGENTS.md";
+  return "Configs";
 }
 
 export function IngestPanel() {
@@ -78,7 +87,7 @@ export function IngestPanel() {
   return (
     <div className="space-y-6">
       {/* Bottoni corpus */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {CORPUS_BUTTONS.map((btn) => (
           <button
             key={btn.id}

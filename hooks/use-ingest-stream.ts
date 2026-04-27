@@ -4,9 +4,9 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { RepoProgress } from "@/components/admin/repo-progress-row";
 import type { Phase } from "@/components/admin/phase-indicator";
 
-type CorpusChoice = "ai_logs" | "agents_md" | "all";
+type CorpusChoice = "ai_logs" | "agents_md" | "repo_configs" | "all";
 
-export type CorpusId = "ai_logs" | "agents_md";
+export type CorpusId = "ai_logs" | "agents_md" | "repo_configs";
 
 export type CorpusRunPhase =
   | "running"

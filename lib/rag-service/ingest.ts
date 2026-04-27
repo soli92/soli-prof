@@ -6,17 +6,53 @@
 
 import chalk from "chalk";
 import { chunkMarkdown } from "./chunker";
-import { CORPUS_REGISTRY, CORPUS_REPOS } from "./config";
+import { selectChunker } from "./chunkers/registry";
+import { CORPUS_REGISTRY, CORPUS_REPOS, DEFAULT_CONFIG_SOURCES } from "./config";
 import { embedTexts } from "./embedder";
-import { fetchTextFile } from "./github";
+import { fetchTextFile, listDirectoryFiles } from "./github";
 import { upsertChunks } from "./store";
 import type {
   Chunk,
   ChunkWithEmbedding,
+  ConfigSource,
   CorpusId,
   IngestOptions,
   IngestReport,
 } from "./types";
+
+/**
+ * Espande un pattern da DEFAULT_CONFIG_SOURCES.
+ * Glob supportato: solo `*.ext` nell'ultimo segmento (es. `.github/workflows/*.yml`), non `**`.
+ */
+async function expandSourcePattern(
+  target: { owner: string; repo: string; branch: string },
+  source: ConfigSource
+): Promise<string[]> {
+  const { pattern } = source;
+  if (!pattern.includes("*")) {
+    return [pattern];
+  }
+  const lastSlash = pattern.lastIndexOf("/");
+  const dirPath = lastSlash === -1 ? "" : pattern.slice(0, lastSlash);
+  const namePattern = lastSlash === -1 ? pattern : pattern.slice(lastSlash + 1);
+
+  if (!namePattern.startsWith("*")) {
+    console.warn(
+      `[ingest] glob pattern non supportato: ${pattern}, solo "*.ext" nella directory è gestito`
+    );
+    return [];
+  }
+
+  const extension = namePattern.slice(1);
+  const filenames = await listDirectoryFiles(
+    target.owner,
+    target.repo,
+    target.branch,
+    dirPath,
+    [extension]
+  );
+  return filenames.map((name) => (dirPath ? `${dirPath}/${name}` : name));
+}
 
 export async function ingestCorpus(
   corpus: CorpusId,
@@ -26,96 +62,176 @@ export async function ingestCorpus(
   const registryEntry = CORPUS_REGISTRY[corpus];
   const repos = CORPUS_REPOS[corpus];
 
-  if (registryEntry.sourceFileName === null) {
-    options.onProgress?.({ type: "start", corpus, totalRepos: repos.length });
-    options.onProgress?.({
-      type: "complete",
-      corpus,
-      totalRepos: repos.length,
-      totalChunks: 0,
-      elapsedMs: Date.now() - startedAt,
-    });
-    return {
-      corpus,
-      totalRepos: repos.length,
-      totalChunks: 0,
-      byRepo: {},
-      elapsedMs: Date.now() - startedAt,
-    };
-  }
-
-  const sourceFileName = registryEntry.sourceFileName;
-
-  console.log(chalk.cyan(`\n🚀 Ingest corpus "${corpus}" (file: ${sourceFileName})`));
-  console.log(chalk.gray(`   ${repos.length} repos to process\n`));
-
-  options.onProgress?.({ type: "start", corpus, totalRepos: repos.length });
-
   const allChunks: Chunk[] = [];
   const byRepo: Record<string, number> = {};
   const indexedAt = new Date().toISOString();
 
-  for (const target of repos) {
-    options.onProgress?.({ type: "repo-start", repo: target.repo });
-    try {
-      const startedAtRepo = Date.now();
-      const markdown = await fetchTextFile(
-        target.owner,
-        target.repo,
-        target.branch,
-        sourceFileName
-      );
+  if (registryEntry.sourceFileName === null) {
+    console.log(
+      chalk.cyan(
+        `\n🚀 Ingest corpus "${corpus}" (multi-file: ${DEFAULT_CONFIG_SOURCES.length} source patterns)`
+      )
+    );
+    console.log(chalk.gray(`   ${repos.length} repos to process\n`));
 
-      if (markdown === null) {
+    options.onProgress?.({ type: "start", corpus, totalRepos: repos.length });
+
+    for (const target of repos) {
+      options.onProgress?.({ type: "repo-start", repo: target.repo });
+      try {
+        const startedAtRepo = Date.now();
+        const repoChunks: Chunk[] = [];
+        let totalCharsForRepo = 0;
+
+        for (const source of DEFAULT_CONFIG_SOURCES) {
+          const filenames = await expandSourcePattern(target, source);
+          for (const filename of filenames) {
+            const content = await fetchTextFile(
+              target.owner,
+              target.repo,
+              target.branch,
+              filename
+            );
+            if (content === null) continue;
+
+            totalCharsForRepo += content.length;
+
+            try {
+              const strategy = selectChunker(filename);
+              const fileChunks = strategy.chunk(content, {
+                repo: target.repo,
+                owner: target.owner,
+                branch: target.branch,
+                indexedAt,
+                filename,
+              });
+              repoChunks.push(...fileChunks);
+            } catch (err) {
+              console.warn(
+                `[ingest] selectChunker failed for ${filename} in ${target.repo}:`,
+                err
+              );
+            }
+          }
+        }
+
+        if (repoChunks.length === 0) {
+          console.log(
+            chalk.yellow(
+              `⚠  Skipped ${target.owner}/${target.repo} — no config files found`
+            )
+          );
+          options.onProgress?.({
+            type: "repo-skipped",
+            repo: target.repo,
+            reason: "no config files found",
+          });
+          continue;
+        }
+
         console.log(
-          chalk.yellow(`⚠  Skipped ${target.owner}/${target.repo} — no ${sourceFileName}`)
+          chalk.green(
+            `✓ Fetched config files from ${target.owner}/${target.repo} (${totalCharsForRepo} chars → ${repoChunks.length} chunks)`
+          )
         );
+
         options.onProgress?.({
-          type: "repo-skipped",
+          type: "repo-fetched",
           repo: target.repo,
-          reason: `no ${sourceFileName}`,
+          chars: totalCharsForRepo,
         });
-        continue;
+
+        options.onProgress?.({
+          type: "repo-chunked",
+          repo: target.repo,
+          chunks: repoChunks.length,
+        });
+
+        allChunks.push(...repoChunks);
+        byRepo[target.repo] = repoChunks.length;
+
+        options.onProgress?.({
+          type: "repo-done",
+          repo: target.repo,
+          chunks: repoChunks.length,
+          elapsedMs: Date.now() - startedAtRepo,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(chalk.red(`✗ Error on ${target.owner}/${target.repo}: ${msg}`));
+        options.onProgress?.({ type: "repo-error", repo: target.repo, error: msg });
       }
+    }
+  } else {
+    const sourceFileName = registryEntry.sourceFileName;
 
-      console.log(
-        chalk.green(
-          `✓ Fetched ${sourceFileName} from ${target.owner}/${target.repo} (${markdown.length} chars)`
-        )
-      );
+    console.log(chalk.cyan(`\n🚀 Ingest corpus "${corpus}" (file: ${sourceFileName})`));
+    console.log(chalk.gray(`   ${repos.length} repos to process\n`));
 
-      options.onProgress?.({
-        type: "repo-fetched",
-        repo: target.repo,
-        chars: markdown.length,
-      });
+    options.onProgress?.({ type: "start", corpus, totalRepos: repos.length });
 
-      const repoChunks = chunkMarkdown(markdown, {
-        repo: target.repo,
-        owner: target.owner,
-        branch: target.branch,
-        indexedAt,
-      });
+    for (const target of repos) {
+      options.onProgress?.({ type: "repo-start", repo: target.repo });
+      try {
+        const startedAtRepo = Date.now();
+        const markdown = await fetchTextFile(
+          target.owner,
+          target.repo,
+          target.branch,
+          sourceFileName
+        );
 
-      options.onProgress?.({
-        type: "repo-chunked",
-        repo: target.repo,
-        chunks: repoChunks.length,
-      });
+        if (markdown === null) {
+          console.log(
+            chalk.yellow(`⚠  Skipped ${target.owner}/${target.repo} — no ${sourceFileName}`)
+          );
+          options.onProgress?.({
+            type: "repo-skipped",
+            repo: target.repo,
+            reason: `no ${sourceFileName}`,
+          });
+          continue;
+        }
 
-      allChunks.push(...repoChunks);
-      byRepo[target.repo] = repoChunks.length;
+        console.log(
+          chalk.green(
+            `✓ Fetched ${sourceFileName} from ${target.owner}/${target.repo} (${markdown.length} chars)`
+          )
+        );
 
-      options.onProgress?.({
-        type: "repo-done",
-        repo: target.repo,
-        chunks: repoChunks.length,
-        elapsedMs: Date.now() - startedAtRepo,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.log(chalk.red(`✗ Error on ${target.owner}/${target.repo}: ${msg}`));
-      options.onProgress?.({ type: "repo-error", repo: target.repo, error: msg });
+        options.onProgress?.({
+          type: "repo-fetched",
+          repo: target.repo,
+          chars: markdown.length,
+        });
+
+        const repoChunks = chunkMarkdown(markdown, {
+          repo: target.repo,
+          owner: target.owner,
+          branch: target.branch,
+          indexedAt,
+        });
+
+        options.onProgress?.({
+          type: "repo-chunked",
+          repo: target.repo,
+          chunks: repoChunks.length,
+        });
+
+        allChunks.push(...repoChunks);
+        byRepo[target.repo] = repoChunks.length;
+
+        options.onProgress?.({
+          type: "repo-done",
+          repo: target.repo,
+          chunks: repoChunks.length,
+          elapsedMs: Date.now() - startedAtRepo,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(chalk.red(`✗ Error on ${target.owner}/${target.repo}: ${msg}`));
+        options.onProgress?.({ type: "repo-error", repo: target.repo, error: msg });
+      }
     }
   }
 
@@ -143,7 +259,6 @@ export async function ingestCorpus(
     };
   }
 
-  // Embedding
   options.onProgress?.({
     type: "phase",
     phase: "embedding",
@@ -162,7 +277,6 @@ export async function ingestCorpus(
     embedding: embeddings[i],
   }));
 
-  // Upsert
   options.onProgress?.({ type: "phase", phase: "upserting" });
 
   await upsertChunks(corpus, chunksWithEmbedding);
