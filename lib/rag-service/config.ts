@@ -49,6 +49,13 @@ export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {
     { owner: "soli92", repo: "solids", branch: "main" },
     { owner: "soli92", repo: "soli-prof", branch: "main" },
     { owner: "soli92", repo: "health-wand-and-fire", branch: "main" },
+    // Aggiunti 27 aprile 2026: scan workspace, AI_LOG presenti
+    { owner: "soli92", repo: "soli-dm-be", branch: "main" },
+    { owner: "soli92", repo: "soli-dm-fe", branch: "main" },
+    { owner: "soli92", repo: "soli-dome", branch: "main" },
+    { owner: "soli92", repo: "pippify", branch: "main" },
+    { owner: "soli92", repo: "soli-platform", branch: "main" },
+    { owner: "soli92", repo: "koollector", branch: "main" },
   ],
   agents_md: [
     { owner: "soli92", repo: "soli-agent", branch: "main" },
@@ -62,7 +69,7 @@ export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {
     { owner: "soli92", repo: "soli-dome", branch: "main" },
     { owner: "soli92", repo: "pippify", branch: "main" },
     { owner: "soli92", repo: "soli-platform", branch: "main" },
-    { owner: "soli92", repo: "Koollector", branch: "main" },
+    { owner: "soli92", repo: "koollector", branch: "main" },
     { owner: "soli92", repo: "health-wand-and-fire", branch: "main" },
   ],
 };
