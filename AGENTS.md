@@ -216,6 +216,10 @@ Possibile creare funzione `getSystemPrompt(specialization?: string)` per adattar
 | **`lib/rag/`** | Legacy (retrieve/config/chunker ecc.): mantenuto in repo; la **chat** usa **`queryCorpus`** da **`lib/rag-service`** (corpus `ai_logs`, `topK` configurato in `app/api/chat/route.ts`). |
 | **`lib/rag-service/`** | Multi-corpus (`ai_logs`, `agents_md`), ingest con **`IngestOptions.onProgress`**, query, errori tipizzati. Import pubblico da **`@/lib/rag-service`** (barrel `index.ts`). |
 
+### Repository indicizzati (`CORPUS_REPOS`)
+
+L’elenco vive in **`lib/rag-service/config.ts`** (due array: `ai_logs`, `agents_md`). Tra i repo: `soli-agent`, `casa-mia-be`, `casa-mia-fe`, `bachelor-party-claudiano`, `solids`, `soli-prof`; per `agents_md` anche `soli-dm-be`, `soli-dm-fe`, `soli-dome`, `pippify`, `soli-platform`, `Koollector` e **health-wand-and-fire** (stesso identificatore in **entrambi** i corpus, branch `main`, owner `soli92`).
+
 ### CLI ingest
 ```bash
 npm run rag:ingest              # tutti i corpus
@@ -485,7 +489,7 @@ npm run build
 
 ---
 
-**Ultimo aggiornamento**: Aprile 2026 — `/admin` + cookie session, **`/api/rag/ingest-stream`** con UI per corpus (`corpusRuns`), hook **`use-ingest-stream`** (fase **`complete`** a fine stream), buffer SSE sources in **`chat-view`**, **`ProcessingIndicator`**, chat su **`queryCorpus`** (`lib/rag-service`), Vitest su `lib/` + `hooks/`
+**Ultimo aggiornamento**: Aprile 2026 — `/admin` + cookie session, **`/api/rag/ingest-stream`** con UI per corpus (`corpusRuns`), hook **`use-ingest-stream`** (fase **`complete`** a fine stream), buffer SSE sources in **`chat-view`**, **`ProcessingIndicator`**, chat su **`queryCorpus`** (`lib/rag-service`), Vitest su `lib/` + `hooks/`, sezione **Repository indicizzati** in `CORPUS_REPOS` (incluso **health-wand-and-fire**)
 
 ---
 

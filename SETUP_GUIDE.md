@@ -108,6 +108,8 @@ Se il build passa senza errori, sei pronto per il deploy.
 
 Vercel scaricherà la repo, farà build e deploierà. Riceverai un URL tipo `https://soli-prof.vercel.app`.
 
+Se usi **RAG** (Voyage, Supabase, `GITHUB_TOKEN`), aggiungi anche le variabili da **`.env.example`**. I repository sorgente per l’ingest (`AI_LOG.md` / `AGENTS.md`) sono elencati in **`lib/rag-service/config.ts`** come `CORPUS_REPOS` (incluso ad es. **health-wand-and-fire**). Dopo ogni modifica a quell’elenco, in locale: `npm run rag:ingest` oppure pagina **`/admin`**.
+
 ### Opzione B: Via CLI
 
 ```bash
@@ -244,4 +246,4 @@ Se tutti i punti sono ✅, sei pronto a:
 
 ---
 
-**Ultimo aggiornamento**: Maggio 2025
+**Ultimo aggiornamento**: Aprile 2026

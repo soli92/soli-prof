@@ -16,6 +16,14 @@ Memoria di sviluppo AI-assisted. Annotazioni sui prompt, decisioni e pattern eme
 
 ---
 
+## Aggiornamento 2026-04-27 — RAG: repo health-wand-and-fire
+
+- **`lib/rag-service/config.ts`**: `CORPUS_REPOS` esteso con **health-wand-and-fire** (owner `soli92`, branch `main`) per **`ai_logs`** e **`agents_md`**, allineato al [repo gioco](https://github.com/soli92/health-wand-and-fire) (Vercel: `health-wand-and-fire.vercel.app`).
+- **Test**: `lib/rag-service/config.test.ts` verifica la presenza del target in entrambi i corpora.
+- **Doc**: README, SETUP_GUIDE, AGENTS.md, questo file; dopo deploy: `npm run rag:ingest` o ingest admin per reindicizzare.
+
+---
+
 ## Fasi di sviluppo (inferite dal history)
 
 ### Fase 1 — Initial commit e doppio scaffold Next/SoliDS/Anthropic
@@ -147,4 +155,3 @@ className="flex items-center justify-center px-6 py-3 bg-blue-600 text-white rou
 - Caching embedding query (Redis)
 - Mobile: PWA o app Expo
 - Metriche: tracking domande utente → feedback loop su dataset
-

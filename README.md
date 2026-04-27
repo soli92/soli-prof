@@ -92,6 +92,10 @@ Scrivi nella chat e riceverai risposte dal tutor personale. Le risposte sono:
 
 Dettagli: vedi [WEEKLY_LOG.md](./WEEKLY_LOG.md).
 
+## RAG (knowledge base)
+
+Il tutor può attingere a contesto da **Supabase + pgvector**: ingest di `AI_LOG.md` e `AGENTS.md` da repository GitHub elencate in `lib/rag-service/config.ts` (`CORPUS_REPOS`), tra cui progetti come `soli-agent`, `solids`, `soli-prof` e **health-wand-and-fire** (shooter arcade). Dopo ogni modifica all’elenco, eseguire `npm run rag:ingest` (o ingest da `/admin` in locale) e verificare variabili `VOYAGE_*`, `SUPABASE_*`, `GITHUB_TOKEN` come in `AGENTS.md` e `.env.example`.
+
 ## Tecnologie principali
 
 ### Next.js 16 + TypeScript

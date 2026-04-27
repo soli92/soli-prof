@@ -24,6 +24,12 @@ describe("CORPUS_REPOS", () => {
     expect(CORPUS_REPOS.ai_logs.length).toBeGreaterThan(0);
     expect(CORPUS_REPOS.agents_md.length).toBeGreaterThan(0);
   });
+
+  it("includes health-wand-and-fire in both corpora (ai_logs + agents_md)", () => {
+    const target = { owner: "soli92", repo: "health-wand-and-fire", branch: "main" };
+    expect(CORPUS_REPOS.ai_logs).toContainEqual(target);
+    expect(CORPUS_REPOS.agents_md).toContainEqual(target);
+  });
 });
 
 describe("RAG_CONFIG", () => {
