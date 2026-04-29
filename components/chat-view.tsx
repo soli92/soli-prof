@@ -309,8 +309,8 @@ export function ChatView() {
       </div>
 
       <div className="bg-white border-t border-gray-200 shadow-lg">
-        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto p-4">
-          <div className="flex gap-2">
+        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto px-4 py-3">
+          <div className="flex gap-3">
             <input
               type="text"
               value={input}
