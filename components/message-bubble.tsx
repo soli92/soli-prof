@@ -28,10 +28,10 @@ export function MessageBubble({ role, content }: MessageBubbleProps) {
       <div
         className={`
           relative group
-          max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl px-4 py-3 rounded-lg
+          max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl px-3 py-2.5
           ${isUser
-            ? "bg-blue-600 text-white rounded-br-none"
-            : "bg-gray-200 text-gray-900 rounded-bl-none"}
+            ? "bg-blue-600 text-white rounded-tl-[8px] rounded-tr-[8px] rounded-bl-[8px] rounded-br-[2px]"
+            : "bg-gray-200 text-gray-900 rounded-tl-[2px] rounded-tr-[8px] rounded-br-[8px] rounded-bl-[8px]"}
         `}
       >
         <p className="text-sm md:text-base leading-relaxed whitespace-pre-wrap">
