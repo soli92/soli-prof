@@ -15,7 +15,7 @@ Chiunque può usare lo stesso setup per avere il proprio tutor personale.
 | Layer | Tecnologia |
 |-------|-----------|
 | **Frontend** | Next.js 16, React 19, TypeScript |
-| **UI** | Tailwind CSS + `@soli92/solids` **^1.7.0** (token / preset); font Google (Inter, DM Sans, JetBrains Mono, famiglie tema) in `app/layout.tsx` come da SoliDS 1.7 |
+| **UI** | Tailwind CSS + `@soli92/solids` **^1.14.1** (token / preset + brand assets); font Google (Inter, DM Sans, JetBrains Mono, famiglie tema) in `app/layout.tsx` |
 | **LLM** | Anthropic Claude Haiku 3.5 (streaming SSE) |
 | **Hosting** | Vercel |
 
@@ -76,6 +76,12 @@ Scrivi nella chat e riceverai risposte dal tutor personale. Le risposte sono:
 - **Brevi**: niente risposte lunghe (chiedi di approfondire se serve)
 - **In italiano**: tono cordiale e supportivo
 - **Contestuali**: il tutor conosce il tuo background (senior frontend) e adatta la spiegazione
+
+## Branding e PWA
+
+- Header chat/admin e stati di caricamento usano il logo Soli (`components/ui/logo-loader.tsx`) con variante automatica in base al tema.
+- Metadata e head sono allineati agli asset SoliDS (`app/layout.tsx`) con Open Graph image, favicon, apple-touch-icon e manifest.
+- Manifest PWA generato da `app/manifest.ts` (`/manifest.webmanifest`) usando i brand assets pubblici di `@soli92/solids`.
 
 ## Progetti e settimanali
 

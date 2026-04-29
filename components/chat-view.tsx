@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { MessageBubble } from "./message-bubble";
 import { ProcessingIndicator, type ProcessingPhase } from "./processing-indicator";
 import { SourceBadges, type Source } from "./source-badges";
+import { SoliLogo } from "./ui/logo-loader";
 
 interface Message {
   id: string;
@@ -254,11 +255,14 @@ export function ChatView() {
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Soli Prof</h1>
-          <p className="text-sm text-gray-600">
-            Il tuo tutor personale per AI engineering
-          </p>
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Soli Prof</h1>
+            <p className="text-sm text-gray-600">
+              Il tuo tutor personale per AI engineering
+            </p>
+          </div>
+          <SoliLogo className="h-9 w-auto object-contain" alt="Logo Soli Prof" />
         </div>
       </div>
 

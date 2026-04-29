@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { SoliLogo } from "./ui/logo-loader";
 
 export type ProcessingPhase = "searching" | "writing";
 
@@ -9,16 +10,16 @@ interface ProcessingIndicatorProps {
   visible?: boolean;
 }
 
-const PHASE_CONFIG: Record<ProcessingPhase, { emoji: string; text: string }> = {
-  searching: { emoji: "🔍", text: "Cerco nei tuoi progetti" },
-  writing: { emoji: "✍️", text: "Scrivo la risposta" },
+const PHASE_CONFIG: Record<ProcessingPhase, { text: string }> = {
+  searching: { text: "Cerco nei tuoi progetti" },
+  writing: { text: "Scrivo la risposta" },
 };
 
 export function ProcessingIndicator({
   phase,
   visible = true,
 }: ProcessingIndicatorProps) {
-  const { emoji, text } = PHASE_CONFIG[phase];
+  const { text } = PHASE_CONFIG[phase];
 
   return (
     <div
@@ -35,7 +36,7 @@ export function ProcessingIndicator({
           min-h-[36px]
         "
       >
-        <span aria-hidden="true">{emoji}</span>
+        <SoliLogo className="h-5 w-auto object-contain" alt="Soli logo" />
         <span>{text}</span>
         <span className="inline-flex gap-0.5 ml-1" aria-hidden="true">
           <span className="dot-1 w-1 h-1 rounded-full bg-gray-500" />

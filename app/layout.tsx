@@ -2,7 +2,15 @@ import type { Metadata, Viewport } from "next";
 import "@soli92/solids/css/index.css";
 import "./globals.css";
 
+const SOLIDS_ASSET_BASE =
+  "https://unpkg.com/@soli92/solids@1.14.1/dist/brand-assets/soli-category-icons";
+const SOLIDS_APP_ICON = `${SOLIDS_ASSET_BASE}/soli-icon-app-icon.png`;
+const SOLIDS_APPLE_TOUCH = `${SOLIDS_ASSET_BASE}/soli-icon-apple-touch.png`;
+const SOLIDS_FAVICON = `${SOLIDS_ASSET_BASE}/soli-icon-favicon.png`;
+const SOLIDS_LOGO = `${SOLIDS_ASSET_BASE}/soli-icon-logo.png`;
+
 export const metadata: Metadata = {
+  metadataBase: new URL("https://soli-prof.vercel.app"),
   title: "Soli Prof - AI Tutor Personale",
   description:
     "Il tuo tutor personale per imparare AI engineering in pubblico",
@@ -21,6 +29,23 @@ export const metadata: Metadata = {
     title: "Soli Prof",
     description: "Il tuo tutor personale per imparare AI engineering in pubblico",
     url: "https://soli-prof.vercel.app",
+    images: [
+      {
+        url: SOLIDS_LOGO,
+        width: 512,
+        height: 512,
+        alt: "Soli Prof",
+      },
+    ],
+  },
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: SOLIDS_FAVICON, type: "image/png", sizes: "32x32" },
+      { url: SOLIDS_APP_ICON, type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: SOLIDS_APPLE_TOUCH, type: "image/png", sizes: "180x180" }],
+    shortcut: [{ url: SOLIDS_FAVICON, type: "image/png", sizes: "32x32" }],
   },
   robots: "index, follow",
 };

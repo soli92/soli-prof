@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { IngestPanel } from "@/components/admin/ingest-panel";
+import { SoliLogo } from "@/components/ui/logo-loader";
 
 export default function AdminPage() {
   const [password, setPassword] = useState("");
@@ -39,9 +40,10 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="w-full max-w-md bg-white rounded-lg shadow p-6">
-          <h1 className="text-xl font-semibold text-gray-900 mb-1">
-            Admin — Soli Prof
-          </h1>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h1 className="text-xl font-semibold text-gray-900">Admin — Soli Prof</h1>
+            <SoliLogo className="h-7 w-auto object-contain" alt="Logo Soli Prof" />
+          </div>
           <p className="text-sm text-gray-500 mb-6">
             Accesso riservato. Inserisci la password.
           </p>
@@ -92,7 +94,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">
               Admin — Soli Prof
@@ -101,6 +103,7 @@ export default function AdminPage() {
               Gestione knowledge base RAG
             </p>
           </div>
+          <SoliLogo className="h-9 w-auto object-contain" alt="Logo Soli Prof" />
           <button
             onClick={() => {
               setAuthorized(false);

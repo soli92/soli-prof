@@ -106,8 +106,13 @@ type ProcessingPhase = "searching" | "writing";
 
 ### Comportamento
 
-- **`searching`** (RAG retrieval): animazione spin, testo "Ricerca contesto..."
-- **`writing`** (streaming): puntini animati, testo "Generazione risposta..."
+- **`searching`** (RAG retrieval): logo Soli + spinner ring, testo "Cerco nei tuoi progetti"
+- **`writing`** (streaming): logo Soli + puntini animati, testo "Scrivo la risposta"
+
+### Branding
+
+- Il componente usa `SoliLogo` da `components/ui/logo-loader.tsx` al posto dell'emoji.
+- Il logo cambia automaticamente variante (`gold`/`mono`) in base al `data-theme` attivo.
 
 ---
 
@@ -126,7 +131,7 @@ type ProcessingPhase = "searching" | "writing";
 
 ## SoliDS Integration
 
-Tutti i componenti usano **`@soli92/solids ^1.7.0`** come preset Tailwind:
+Tutti i componenti usano **`@soli92/solids ^1.14.1`** come preset Tailwind:
 
 ```javascript
 // tailwind.config.ts
