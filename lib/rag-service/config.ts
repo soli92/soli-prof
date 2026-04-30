@@ -106,6 +106,7 @@ export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {
     { owner: "soli92", repo: "pippify", branch: "main" },
     { owner: "soli92", repo: "soli-platform", branch: "main" },
     { owner: "soli92", repo: "koollector", branch: "main" },
+    { owner: "soli92", repo: "soli-projects", branch: "main" },
   ],
   agents_md: [
     { owner: "soli92", repo: "soli-agent", branch: "main" },
@@ -121,6 +122,7 @@ export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {
     { owner: "soli92", repo: "soli-platform", branch: "main" },
     { owner: "soli92", repo: "koollector", branch: "main" },
     { owner: "soli92", repo: "health-wand-and-fire", branch: "main" },
+    { owner: "soli92", repo: "soli-projects", branch: "main" },
   ],
   repo_configs: [
     { owner: "soli92", repo: "soli-agent", branch: "main" },
@@ -136,6 +138,7 @@ export const CORPUS_REPOS: Record<CorpusId, RepoTarget[]> = {
     { owner: "soli92", repo: "soli-platform", branch: "main" },
     { owner: "soli92", repo: "koollector", branch: "main" },
     { owner: "soli92", repo: "health-wand-and-fire", branch: "main" },
+    { owner: "soli92", repo: "soli-projects", branch: "main" },
   ],
 };
 

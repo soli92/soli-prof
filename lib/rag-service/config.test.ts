@@ -54,8 +54,8 @@ describe("CORPUS_REPOS", () => {
     expect(CORPUS_REPOS.repo_configs.length).toBeGreaterThan(0);
   });
 
-  it("CORPUS_REPOS.repo_configs ha 13 repo", () => {
-    expect(CORPUS_REPOS.repo_configs).toHaveLength(13);
+  it("CORPUS_REPOS.repo_configs ha 14 repo", () => {
+    expect(CORPUS_REPOS.repo_configs).toHaveLength(14);
     expect(CORPUS_REPOS.repo_configs.every((r) => r.owner === "soli92")).toBe(true);
   });
 

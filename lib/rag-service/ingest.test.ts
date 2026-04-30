@@ -4,10 +4,10 @@ import { filterTargetRepos } from "./ingest";
 import type { RepoTarget } from "./types";
 
 describe("ingestCorpus targetRepos (filterTargetRepos)", () => {
-  it("senza targetRepos, mantiene tutti i repo del corpus (es. ai_logs: 13)", () => {
+  it("senza targetRepos, mantiene tutti i repo del corpus (es. ai_logs: 14)", () => {
     const all = CORPUS_REPOS.ai_logs;
     expect(filterTargetRepos(all, undefined)).toEqual(all);
-    expect(all.length).toBe(13);
+    expect(all.length).toBe(14);
   });
 
   it("con targetRepos di 1 repo, mantiene solo quello", () => {
