@@ -409,6 +409,137 @@ E sul versioning vs migrazione "tutto-o-niente": investire 20 minuti in più per
 
 ---
 
+## Settimana 6: Soli Designer come sub-agent e brand SoliDS 1.14.1 ecosystem-wide (28-29 aprile 2026)
+
+Due giorni con caratteri opposti ma complementari: martedì interamente su soli-agent per dare vita a Soli Designer, un sub-agent dedicato a task visivi e UI/UX; mercoledì rollout coordinato del brand SoliDS 1.14.1 su otto repository in parallelo. Una giornata di costruzione, una di consolidamento. Il pattern che vorrei replicare più spesso, perché alterna ricerca e ripulitura — e tiene insieme uno stack che altrimenti diverge a velocità diverse.
+
+### 🎯 Obiettivi
+- ✅ Attivare un sub-agent specializzato (Soli Designer) per task di design e generazione asset
+- ✅ Pipeline async per generazione immagini compatibile con Vercel serverless (no fire-and-forget naïve)
+- ✅ Trovare un provider di image generation affidabile e veloce
+- ✅ Allineare 8 repository alla nuova versione del design system `@soli92/solids ^1.14.1`
+- ✅ Introdurre `LogoLoader` come componente riusabile in tutti i repo dell'ecosistema
+- ✅ Coerenza branding: header, manifest PWA, asset (favicon, apple-touch, OpenGraph)
+
+### 📝 Cosa è stato fatto
+
+#### Soli Designer come sub-agent (28 aprile)
+
+Esisteva già un sistema di sub-agent in soli-agent (frontend, backend, devops, tester, code-reviewer, mobile, general). Ho aggiunto un nuovo ruolo `graphic-designer` che mappa a "Soli Designer" — ruolo focalizzato su consulenza UI/UX, generazione asset (logo, favicon, palette, gradient), e coerenza con il design system `@soli92/solids`.
+
+Tre decisioni di design del ruolo:
+
+**Premium routing forzato.** Per il ruolo `graphic-designer`, in `lib/subagent.ts` viene impostato `premium=true` indipendentemente dalla preferenza utente. La ragione: i task di design beneficiano di modelli quality-first (Claude Sonnet) molto più che da modelli economy. Forzare premium evita che il routing scelga un modello meno capace per risparmiare, in un dominio dove la qualità è il valore principale.
+
+**Iterazioni dedicate.** `SOLI_SUBAGENT_GRAPHIC_DESIGNER_MAX_ITERATIONS=30` invece del default 20 degli altri ruoli. I task di design tendono a richiedere più round di iterazione (genera → valuta → critica → rigenera) prima di convergere, e tagliarli a 20 forzava chiusure premature.
+
+**Tool stack visivo dedicato.** Il sub-agent ha accesso a `generate_image`, `generate_image_hf`, `generate_svg_recraft`, `check_image_job`, `create_svg`, `generate_css_gradient`, `create_favicon`. Mix di tool sincroni (SVG, gradient, favicon — tutto generato come testo dal modello stesso) e tool async (immagini raster — generate da provider esterni con job ID e polling).
+
+#### Pipeline async per immagini (28 aprile)
+
+La generazione di immagini raster con modelli di ultima generazione (FLUX, Stable Diffusion) richiede 5-30 secondi. Su Vercel serverless un singolo handler che attende sincrono diventa fragile (timeout, costo, UX bloccante). La pipeline che ho costruito è **async via job ID e polling**:
+
+```
+1. Tool generate_image_hf chiama il job:
+   - Crea job_id in Redis (TTL 1h)
+   - Triggera POST /api/image-worker (fire-and-forget, perché il worker è 
+     una function separata che vive del suo)
+   - Ritorna subito al modello con il job_id
+
+2. Worker /api/image-worker:
+   - Riceve job_id
+   - Chiama il provider di generazione (HF/Replicate/fal.ai)
+   - Aspetta il risultato (la function ha maxDuration alto)
+   - Aggiorna lo stato in Redis: status=completed, result=<URL>
+
+3. Tool check_image_job:
+   - Polling ogni ~10 secondi
+   - Quando status=completed, ritorna l'URL al modello
+```
+
+Pattern coerente con quello che ho imparato sul webhook GitHub la settimana scorsa: su Vercel **i fire-and-forget non sopravvivono** se il return chiude la function. Il trucco è separare in due endpoint: l'orchestratore ritorna subito con un handle (job_id), il worker è una function dedicata che ha il suo runtime budget. Lezione che torna in domini diversi.
+
+Bonus pattern: il job_id è incluso nella risposta in chat, e il frontend (`app/page.tsx`) **rileva il pattern `agent-[a-f0-9]{8}` e parte un polling automatico**. Quando il job è completato, viene mostrato un banner cliccabile che invia "Mostrami il risultato del sub-agente {id}" come messaggio, riportando il flusso in chat senza che l'utente debba ricordarsi di chiedere.
+
+#### La trappola del provider hopping (28 aprile, ore 15:16 → 17:30)
+
+Questa è la parte che voglio cristallizzare come **monito esplicito** nella memoria.
+
+Tra le 15:16 e le 17:30 — cioè **2 ore e 15 minuti** — ho cambiato provider di image generation **quattro volte**: prima su Hugging Face Inference (modello generico), poi switch a Stable Diffusion 2.1, poi a FLUX 1 dev, poi migrazione completa a Replicate. Il giorno dopo, alle 12:33, ulteriore migrazione a fal.ai (definitiva). 
+
+Cinque provider in 21 ore di lavoro effettivo.
+
+Cosa è successo: HF Inference API si è rivelato lento e inconsistente (cold start variabili, code piene). Cercavo un workaround pivotando sul modello, poi sul provider. Ogni cambio richiedeva: rifare il client wrapper, rifare il payload, rifare il polling, rifare gli env, rifare i log di debug. Le ultime tre iterazioni (SD → FLUX → Replicate → fal.ai) erano **lo stesso codice riscritto** con `fetch` verso URL diversi e auth header diverse. Zero valore architetturale, solo costo di setup e di debug per ogni nuovo endpoint.
+
+**Lezione cristallizzata**: quando un provider esterno ti dà problemi, prima di cambiarlo ti chiedi se hai fatto **tutti i test base sull'attuale**. Latency? Failure rate? Cold start? Dimensione output? Se non sai questi numeri, non stai sostituendo per dato — stai sostituendo per frustrazione, e ogni nuovo provider ti darà problemi diversi che non hai ancora visto. La vera mossa, scoperta a posteriori, era il **timeout aggressivo + retry con un solo provider stabile**, non saltare in giro.
+
+Il salto a fal.ai del 29 mattina è stato l'unico fatto con dati: avevo benchmark di latency su tre task identici, fal.ai era 3x più veloce con stessa qualità output. Quel salto ha senso. Gli altri tre erano panic-driven.
+
+Da qui in poi: prima di cambiare provider — qualsiasi provider, anche LLM — voglio una nota scritta che dica "qual è il problema concreto, qual è la metrica, quale alternativa risolve quale dimensione". Senza questa nota, non cambio.
+
+#### Soli Designer attivo: validazione (28 aprile, fine giornata)
+
+Come prima task reale per Soli Designer ho generato il **favicon SVG** di soli-agent stesso: minimal tech design, palette SoliDS (cyan→blue gradient). Output buono al primo tentativo (dopo 2-3 iterazioni di rifinitura), commit `🎨 Favicon SVG: minimal tech design`. Il fatto che il sub-agent funzionasse end-to-end validava architettura + provider + tool stack. Sgombrato il terreno per usarlo davvero il giorno dopo.
+
+#### Brand SoliDS 1.14.1 ecosystem-wide (29 aprile)
+
+Il design system SoliDS aveva pubblicato la 1.14.1 (icone, brand assets centralizzati, LogoLoader). Otto repository dell'ecosistema usavano versioni precedenti (1.5.0 / 1.7.0 / 1.13.1). Rollout coordinato:
+
+| Repository | Bump | Componenti aggiornati | Asset PWA |
+|---|---|---|---|
+| soli-prof | → 1.14.1 | logo-loader, brand assets, layout | manifest, OG image, apple-touch |
+| casa-mia-be | (no UI) | — | — |
+| casa-mia-fe | → 1.14.1 | SoliLogo, LogoLoader, Navbar | manifest, icons, apple-touch |
+| bachelor-party-claudiano | → 1.14.1 | SoliLogoLoader (3 screen), header logo | manifest, app-icon, social tags |
+| solids | publisher | (set Soli icons + LogoLoader esposti) | — |
+| soli-dm-be | (no UI) | — | — |
+| soli-dm-fe | → 1.14.1 | SoliBrandLogo (home, navigation, loader) | manifest, OG/Twitter image |
+| soli-dome | → 1.14.1 | SoliBrandLogo, SoliLogoLoader | manifest.ts (route runtime) |
+| pippify | → 1.14.1 | — | — |
+| soli-platform | (no UI) | — | — |
+| koollector | → 1.14.1 | — | — |
+| health-wand-and-fire | → 1.14.1 | AppHeader, SoliLogoLoader (Menu, AI loading) | manifest.webmanifest, OG, apple-touch |
+
+Per ogni repo: bump dipendenza, sostituzione iconografia (emoji/loader generici → componenti brand), allineamento metadata `app/layout` e `app/manifest`, aggiornamento `AGENTS.md` / `AI_LOG.md` / `README.md`. Tipico rollout coordinato — niente di concettualmente complesso, ma tanti repo da toccare in modo coerente.
+
+Una cosa in particolare l'ho fatta nel modo giusto: **il test di guardia su `@soli92/solids` ^1.14.1 in tutti i repo che ne dipendono**. Un singolo test (`solids-package.test.ts` o equivalente per ogni stack) che asserisce sul range di versione del package. Se per errore qualcuno bumpa a una versione incompatibile o downgrada, il test fallisce. Costo: 10 righe di test per repo. Beneficio: una intera classe di errori di drift di versione catturata in CI invece che in produzione.
+
+#### Bonus: refactor EmptyStateFallback e cost coverage chat (29 aprile pomeriggio)
+
+Due lavori minori parallel-track:
+- **`EmptyStateFallback` refactored** in soli-agent come componente con CSS Module token-aware (allineato a SoliDS, non più Tailwind raw). Un piccolo passo della migrazione "Tailwind raw → token semantici" che sto portando avanti gradualmente quando tocco i componenti per altri motivi.
+- **Test coverage modello-aware sui costi Anthropic**: hardening del payload `usage` in `lib/anthropic-usage.ts` per gestire pricing diversi tra Opus/Sonnet/Haiku, con fallback compatibility per payload legacy salvati in `localStorage`. Importante per non far crashare la sezione "Metriche ultima richiesta" su utenti che hanno payload vecchi salvati.
+
+### 🧠 Lezioni cristallizzate
+
+**Provider hopping è il pattern di errore più subdolo** che esiste quando integri servizi esterni. Ogni cambio sembra "veloce" perché stai solo riscrivendo un wrapper di 20 righe. In realtà stai consumando ore di setup, debug, env, e — peggio — perdi i dati che stavi accumulando sull'attuale. Vedi sopra: 2h15 di iterazioni che nessuno avrebbe dovuto fare. La regola: prima di cambiare, scrivi due frasi su quale metrica ti sta facendo cambiare e perché l'alternativa risolve. Se non puoi scrivere quelle due frasi con dati, non cambiare.
+
+**Premium routing per ruoli quality-first** è meglio di "il modello sceglie liberamente" o "l'utente sceglie ogni volta". Per task con dimensione di valore chiara (design = qualità), forzare il tier giusto a livello di ruolo riduce variance dell'output e semplifica il mental model dell'utente. Lo stesso pattern lo applicherò al ruolo `tester` (forzare modello che è bravo a trovare bug, non quello veloce) la prossima volta che ci tocco.
+
+**Pipeline async via job-ID + polling** è il default da preferire sempre per task che durano >5s su serverless, anche quando "in teoria" il fire-and-forget potrebbe bastare. Costo: 1 endpoint in più (worker), un campo job_id in Redis. Beneficio: zero perdite silenziose di esecuzione. La lezione l'avevo imparata sul webhook GitHub la settimana scorsa, ma applicarla qui dove non c'era ancora un bug visibile è stata la cosa giusta.
+
+**Polling automatico in chat su pattern del messaggio assistant** è una micro-feature di UX che vale tanto. Il modello ritorna `agent-abc123`, il frontend rileva il pattern, parte polling, mostra banner quando completato. L'utente non deve ricordare di chiedere "è pronto?" — la chat continua naturalmente. Pattern riutilizzabile per qualsiasi task async che ritorna un handle.
+
+**Rollout coordinato di una versione del design system** funziona meglio quando hai un piccolo test di guardia in ogni consumer. La domanda "siamo sulla 1.14.1 ovunque?" diventa una query CI invece che una verifica manuale repo per repo. Investimento: 10 righe di test per repo, una volta. Ritorno: per sempre.
+
+### 🐛 Debito tecnico dichiarato
+
+- **Provider redundancy**: oggi siamo su fal.ai single-source. Se fal.ai va giù, non c'è fallback automatico a un altro provider. Decidere se costruire fallback chain (sul modello del circuit breaker LLM esistente) o accettare il single-source per ora
+- **Test base sui provider esterni mancanti**: non ho test che misurano latency/failure rate dei provider che usiamo. Se un provider degrada lentamente, lo scopro solo quando un utente si lamenta
+- **Migrazione "Tailwind raw → token SoliDS" parziale**: sto avanzando opportunisticamente quando tocco un componente per altre ragioni. Non c'è una checklist esplicita di cosa manca. Da una passata di audit verrebbe utile
+- **Cost coverage Anthropic limitata a "ultima richiesta"**: la sezione metriche mostra solo l'ultimo turno. Non c'è ancora dashboard storica di costo/giorno/utente. Su Pro con uso intenso questa visibilità inizia a mancare
+
+### 🚀 Open per prossime sessioni
+
+- A/B test reranker e hybrid in produzione (rimandato dalla Settimana 5)
+- Eval framework strutturato con dataset di ground truth (idem)
+- Audit sistematico "Tailwind raw → token SoliDS" su soli-agent
+- Bench provider image generation (latency p50/p95, failure rate) per validare scelta fal.ai con dati invece che impressione
+- Rate limit fal.ai non noto: trovare i numeri prima di buttare traffico reale
+
+
+---
+
 ## Note generali
 
 - **Editor**: VS Code + Cursor per agenti AI
