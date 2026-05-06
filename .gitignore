@@ -36,3 +36,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.tsbuildinfo
+
+# LLM Wiki template
+# Obsidian
+.obsidian/workspace*
+.obsidian/cache
+.obsidian/graph.json
+# Editor
+# Note: raw/ is intentionally NOT ignored. Sources are part of ground truth.
