@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 
+import { RAG_CONFIG } from "@/lib/rag-service/config";
+
 export interface Source {
   repo: string;
   section: string;
@@ -69,7 +71,9 @@ export function SourceBadges({ sources }: Props) {
 
   if (!sources || sources.length === 0) return null;
 
-  const filtered = sources.filter((s) => s.similarity >= 0.2);
+  const filtered = sources.filter(
+    (s) => s.similarity >= RAG_CONFIG.similarityThresholdForSources
+  );
   if (filtered.length === 0) return null;
 
   const deduped = deduplicate(filtered);

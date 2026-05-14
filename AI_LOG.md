@@ -196,3 +196,11 @@ className="flex items-center justify-center px-6 py-3 bg-blue-600 text-white rou
 - Aggiornati `docs/wiki/wiki/index.md` e `docs/wiki/wiki/log.md` per allineare il wiki al contesto reale del repository.
 - Snapshot iniziale e pagine top-level resi coerenti con `AGENTS.md`, `README.md` e questo `AI_LOG.md`.
 - Nessun ingest di sorgenti effettuato: aggiornamento solo strutturale/documentale.
+
+---
+
+## Aggiornamento 2026-05-14 — SourceBadges: soglia allineata a `RAG_CONFIG`
+
+- **`components/source-badges.tsx`**: import di **`RAG_CONFIG`** da `lib/rag-service/config` e filtro delle fonti con **`similarityThresholdForSources`** (stesso valore usato in `lib/rag-service/query.ts` per le sources nel marker `__SOURCES__`), al posto del **0.2** hardcoded che poteva mostrare badge non coerenti con il filtro server.
+- **`AGENTS.md`**: nota in alberatura `components/` + sottosezione **SourceBadges** sotto ChatView.
+- La soglia **`isStrong`** (evidenza visiva ≥ **0.35**) resta locale al componente.

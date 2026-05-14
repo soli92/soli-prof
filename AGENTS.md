@@ -58,7 +58,7 @@ soli-prof/
 │   ├── chat-view.tsx              # Componente chat (state, SSE, ProcessingIndicator, sources)
 │   ├── message-bubble.tsx         # Visualizzazione messaggi
 │   ├── processing-indicator.tsx   # Fasi searching / writing (anti-flicker)
-│   └── source-badges.tsx          # Badge sorgenti RAG post-risposta
+│   └── source-badges.tsx          # Badge sorgenti RAG post-risposta (soglia = RAG_CONFIG.similarityThresholdForSources)
 ├── hooks/
 │   └── use-ingest-stream.ts       # Client: fetch POST + parse SSE ingest; stato per corpus (`corpusRuns`) + derivati
 ├── lib/
@@ -330,6 +330,12 @@ npm run dev
 - `useState` — messages, input, loading
 - `useRef` — scroll ref
 - `useEffect` — auto-scroll
+
+### SourceBadges (`components/source-badges.tsx`)
+
+**Responsabilità:**
+- Badge cliccabili verso GitHub dopo il blocco fonti nello stream.
+- Filtro similarity allineato a **`RAG_CONFIG.similarityThresholdForSources`** (`lib/rag-service/config.ts`), coerente con il filtro “sources” in `lib/rag-service/query.ts` (prima era una costante **0.2** solo client).
 
 ### MessageBubble (`components/message-bubble.tsx`)
 
