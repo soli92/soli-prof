@@ -155,6 +155,10 @@ Font caricati in `app/layout.tsx`:
 - **DM Sans** (display/heading)
 - **JetBrains Mono** (code/technical)
 
+### Generative UI (chat)
+
+La chat può ricevere blocchi strutturati oltre al testo (tool `show_tutor_focus_card`). I componenti usano le classi semantiche del preset SoliDS (`bg-card`, `border-border`, …). Dettaglio: **`docs/generative-ui.md`**.
+
 ---
 
 ## Pattern di Responsive Design

@@ -41,7 +41,7 @@ soli-prof/
 │   │   ├── admin/
 │   │   │   └── verify-password/route.ts  # POST — verifica ADMIN_PAGE_PASSWORD, cookie sp_admin_session
 │   │   ├── chat/
-│   │   │   └── route.ts           # POST /api/chat — streaming SSE (RAG cross-corpus RRF via queryMultipleCorpora → lib/rag-service)
+│   │   │   └── route.ts           # POST /api/chat — SSE: __SOURCES__ poi NDJSON Generative UI (v:1) + [DONE]; RAG + tools da lib/generative-ui
 │   │   ├── rag/
 │   │   │   ├── query/route.ts     # POST /api/rag/query — retrieval multi-corpus (x-api-key)
 │   │   │   ├── ingest/route.ts    # POST /api/rag/ingest — indicizzazione sync (x-api-key + x-admin-confirm)
@@ -55,7 +55,8 @@ soli-prof/
 │   └── globals.css                # Stili globali
 ├── components/
 │   ├── admin/                     # UI ingest: ingest-panel, phase-indicator, repo-progress-row
-│   ├── chat-view.tsx              # Componente chat (state, SSE, ProcessingIndicator, sources)
+│   ├── generative-ui/             # Generative UI: AssistantMessage, TutorFocusCard, mount tool
+│   ├── chat-view.tsx              # Chat (SSE, sources, NDJSON stream → blocchi assistente)
 │   ├── message-bubble.tsx         # Visualizzazione messaggi
 │   ├── processing-indicator.tsx   # Fasi searching / writing (anti-flicker)
 │   └── source-badges.tsx          # Badge sorgenti RAG post-risposta (soglia = RAG_CONFIG.similarityThresholdForSources)
@@ -64,7 +65,8 @@ soli-prof/
 ├── lib/
 │   ├── admin-session.ts           # Sessioni in-memory + cookie httpOnly (TTL 1h)
 │   ├── anthropic.ts               # Client Anthropic (init, config)
-│   ├── prompts.ts                 # System prompt del tutor (+ variant RAG)
+│   ├── generative-ui/             # Registry render tool, protocollo NDJSON, build MessageParam + tool_result
+│   ├── prompts.ts                 # System prompt del tutor (+ variant RAG + istruzioni render tool)
 │   ├── rag/                       # Modulo RAG legacy (non usato dalla chat principale; retain per riferimento)
 │   └── rag-service/               # Modulo RAG multi-corpus (ingest, query, onProgress SSE, barrel index.ts)
 ├── public/                        # Assets statici (favicon, ecc.)
@@ -84,12 +86,14 @@ soli-prof/
 ├── tailwind.config.ts             # Tailwind + preset SoliDS
 ├── postcss.config.mjs             # PostCSS (Tailwind, autoprefixer)
 ├── next.config.ts                 # Next.js config
+├── docs/
+│   └── generative-ui.md           # Generative UI: registry, stream client, estensioni
 ├── README.md                       # Documentazione progetto
 ├── WEEKLY_LOG.md                  # Log settimanale apprendimento
 ├── AGENTS.md                       # Questo file (contesto operativo principale)
 ├── AGENT.md                        # Punta qui → AGENTS.md (alias nome singolare)
 ├── AI_LOG.md                      # Memoria sviluppo AI-assisted
-├── vitest.config.ts               # Unit test (lib/**/*.test.ts, hooks/**/*.test.ts)
+├── vitest.config.ts               # Unit test (lib/**/*.test.ts, hooks/**/*.test.ts, app/**/*.test.ts)
 └── LICENSE                        # MIT License
 ```
 
@@ -127,66 +131,38 @@ soli-prof/
 **Request body:**
 ```typescript
 {
-  messages: Array<{
-    role: "user" | "assistant";
-    content: string;
-  }>;
-  userMessage: string;  // Ultimo messaggio utente
+  messages: Array<
+    | { role: "user"; content: string }
+    | { role: "assistant"; content: string }
+    | {
+        role: "assistant";
+        blocks: Array<
+          | { type: "text"; text: string }
+          | {
+              type: "tool_use";
+              id: string;
+              name: string;
+              input: unknown;
+              streaming?: false;
+            }
+        >;
+      }
+  >;
+  userMessage: string; // Ultimo messaggio utente (aggiunto lato server alla conversazione)
 }
 ```
 
 **Response:**
 - **Content-Type**: `text/event-stream`
 - **Encoding**: UTF-8
-- **Body**: Streaming testo della risposta Claude + `[DONE]` al termine
+- **Body**: prefisso `__SOURCES__{...}__END_SOURCES__\n`, poi **righe NDJSON** (`{"v":1,"k":"text"|"tbeg"|"tjson"|"tend"|"done",...}`) emesse dallo stream Anthropic; riga finale `\n[DONE]`
 - **Error marker**: `[ERROR]: <message>` se fallito
 
 ### Implementazione chiave
 
-**File**: `app/api/chat/route.ts`
+**File**: `app/api/chat/route.ts` — RAG (`queryMultipleCorpora`), `tools: getAnthropicTools()` da `lib/generative-ui/registry.ts`, `messages` da `buildAnthropicMessages` (`lib/generative-ui/to-anthropic-messages.ts` + `parseClientChatMessages`). Dopo ogni turno assistente con `show_tutor_focus_card`, la cronologia client include già il `tool_result` sintetico per la richiesta successiva.
 
-```typescript
-// Validazione input
-if (!body.userMessage || typeof body.userMessage !== "string") {
-  return NextResponse.json({ error: "..." }, { status: 400 });
-}
-
-// Costruzione conversazione
-const conversationMessages: ChatMessage[] = [
-  ...body.messages,
-  { role: "user", content: body.userMessage }
-];
-
-// Streaming SSE
-const stream = new ReadableStream({
-  async start(controller) {
-    const response = await anthropic.messages.create({
-      model: DEFAULT_MODEL,
-      max_tokens: 1024,
-      system: getSystemPrompt(),
-      messages: conversationMessages,
-      stream: true,  // ← IMPORTANTE
-    });
-    // Loop sui delta, enqueue chunks
-  }
-});
-```
-
-**Client-side** (`chat-view.tsx`):
-```typescript
-const response = await fetch("/api/chat", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ messages, userMessage: input })
-});
-
-const reader = response.body?.getReader();
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  assistantContent += decoder.decode(value);  // Accumula streaming
-}
-```
+**Client** (`components/chat-view.tsx`): dopo il blocco sources, parser NDJSON riga per riga → stato blocchi (`lib/generative-ui/merge-stream-slots.ts`). Dettaglio: `docs/generative-ui.md`.
 
 ---
 
@@ -402,7 +378,7 @@ vercel --prod  # Richiede VERCEL_TOKEN in .env.local o login interattivo
 
 ## Testing
 
-**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. Pattern **`lib/**/*.test.ts`**, **`hooks/**/*.test.ts`** e **`app/api/webhooks/github/route.test.ts`**: **`lib/rag-service/*.test.ts`** (chunker, config, errori, **`query.test.ts`** — RRF **`queryMultipleCorpora`** con mock `queryImpl`), **`lib/admin-session.test.ts`** (HMAC `ADMIN_SESSION_SECRET`, opzioni cookie; per assert “secret mancante” usare **`vi.stubEnv("ADMIN_SESSION_SECRET", "")`** invece di contare solo su **`vi.unstubAllEnvs()`**, che ripristina l’env reale e può lasciare la variabile valorizzata in shell / `.env`), **`lib/solids-package.test.ts`** (range **`@soli92/solids` ^1.14.1**), **`hooks/use-ingest-stream.test.ts`** (reducer multi-corpus `ingestCorpusRunsReducer`, `deriveIngestAggregates`); **`route.test.ts`** (webhook: firma HMAC, filtri `push`, trigger corpus).
+**Unit test**: [Vitest](https://vitest.dev/) 3.x, config `vitest.config.ts`. Pattern **`lib/**/*.test.ts`**, **`hooks/**/*.test.ts`** e **`app/api/webhooks/github/route.test.ts`**: **`lib/rag-service/*.test.ts`** (chunker, config, errori, **`query.test.ts`** — RRF **`queryMultipleCorpora`** con mock `queryImpl`), **`lib/generative-ui/generative-ui.test.ts`** (registry, protocollo NDJSON, merge slot, validazione payload, `buildAnthropicMessages`), **`lib/admin-session.test.ts`** (HMAC `ADMIN_SESSION_SECRET`, opzioni cookie; per assert “secret mancante” usare **`vi.stubEnv("ADMIN_SESSION_SECRET", "")`** invece di contare solo su **`vi.unstubAllEnvs()`**, che ripristina l’env reale e può lasciare la variabile valorizzata in shell / `.env`), **`lib/solids-package.test.ts`** (range **`@soli92/solids` ^1.14.1**), **`hooks/use-ingest-stream.test.ts`** (reducer multi-corpus `ingestCorpusRunsReducer`, `deriveIngestAggregates`); **`route.test.ts`** (webhook: firma HMAC, filtri `push`, trigger corpus).
 
 ```bash
 npm test              # vitest run — CI-friendly
@@ -517,7 +493,7 @@ npm run build
 
 ---
 
-**Ultimo aggiornamento**: Aprile 2026 — **`/api/webhooks/github`** (re-ingest su `push`, HMAC, `scripts/setup-webhooks.sh` per 12 repo + soli-prof manuale), oltre a: `/admin` + cookie, **`/api/rag/ingest-stream`**, hook **`use-ingest-stream`**, buffer SSE in **`chat-view`**, **`queryMultipleCorpora`** (RRF), Vitest `lib/` + `hooks/` + **webhook route test**, **`CORPUS_REPOS`** con **health-wand-and-fire**
+**Ultimo aggiornamento**: Maggio 2026 — **Generative UI** in chat (`lib/generative-ui`, tool `show_tutor_focus_card`, stream NDJSON dopo `__SOURCES__`, test `lib/generative-ui/generative-ui.test.ts`, `docs/generative-ui.md`). Precedenti: Aprile 2026 — **`/api/webhooks/github`** (re-ingest su `push`, HMAC, `scripts/setup-webhooks.sh` per 12 repo + soli-prof manuale), oltre a: `/admin` + cookie, **`/api/rag/ingest-stream`**, hook **`use-ingest-stream`**, buffer SSE in **`chat-view`**, **`queryMultipleCorpora`** (RRF), Vitest `lib/` + `hooks/` + **webhook route test**, **`CORPUS_REPOS`** con **health-wand-and-fire**
 
 ---
 

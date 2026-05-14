@@ -129,6 +129,7 @@ Con **`GITHUB_WEBHOOK_SECRET`** configurato su Vercel, l’API **`POST /api/webh
 - Modello veloce, leggero, economico per tutor interattivo
 - Streaming per UX fluida
 - System prompt ottimizzato per insegnamento pratico
+- Generative UI (tool `show_tutor_focus_card`): vedi `docs/generative-ui.md`
 
 ## Architettura
 
@@ -137,7 +138,7 @@ soli-prof/
 ├── app/
 │   ├── admin/page.tsx         # Area admin (re-ingest KB) — richiede ADMIN_PAGE_PASSWORD
 │   ├── api/
-│   │   ├── chat/route.ts      # Chat streaming + RAG cross-corpus (RRF, lib/rag-service)
+│   │   ├── chat/route.ts      # Chat streaming + RAG + NDJSON Generative UI (tools da lib/generative-ui)
 │   │   ├── admin/verify-password/route.ts
 │   │   └── rag/
 │   │       ├── query, ingest, ingest-stream   # RAG HTTP (+ SSE progress su ingest-stream)
@@ -145,7 +146,8 @@ soli-prof/
 │   ├── layout.tsx             # Metadati e setup
 │   └── globals.css            # Stili globali
 ├── components/
-│   ├── chat-view.tsx          # Chat (SSE, indicator, sources)
+│   ├── chat-view.tsx          # Chat (SSE, indicator, sources, NDJSON Generative UI)
+│   ├── generative-ui/         # AssistantMessage, TutorFocusCard, mount tool
 │   ├── admin/                  # Pannello ingest + progress repo
 │   └── message-bubble.tsx     # Bubble messaggi
 ├── hooks/
@@ -153,6 +155,7 @@ soli-prof/
 ├── lib/
 │   ├── admin-session.ts       # Sessioni cookie admin (server)
 │   ├── rag-service/           # Multi-corpus ingest/query
+│   ├── generative-ui/         # Registry render tool + protocollo NDJSON stream
 │   ├── anthropic.ts           # Client Anthropic
 │   └── prompts.ts             # System prompt del tutor
 ├── package.json               # Dependencies

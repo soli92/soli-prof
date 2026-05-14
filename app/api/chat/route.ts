@@ -6,17 +6,16 @@ import {
   rerank,
   type RetrievedSource,
 } from "@/lib/rag-service";
+import { getAnthropicTools } from "@/lib/generative-ui/registry";
+import { buildAnthropicMessages } from "@/lib/generative-ui/to-anthropic-messages";
+import { encodeStreamLine } from "@/lib/generative-ui/stream-protocol";
+import { parseClientChatMessages } from "@/lib/generative-ui/validate-client-messages";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
 interface ChatRequest {
-  messages: ChatMessage[];
+  messages: unknown;
   userMessage: string;
 }
 
@@ -40,11 +39,15 @@ function parseRagFinalTopK(): number {
   return Number.isFinite(n) && n > 0 ? n : 25;
 }
 
+/** Estrae index da eventi stream Anthropic (shape runtime SDK). */
+function readStreamIndex(ev: { index?: number }): number {
+  return typeof ev.index === "number" ? ev.index : 0;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
 
-    // Validazione input
     if (!body.userMessage || typeof body.userMessage !== "string") {
       return NextResponse.json(
         { error: "userMessage è richiesto" },
@@ -52,17 +55,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Preparazione messaggi per Claude
-    const conversationMessages: ChatMessage[] = [
-      ...(body.messages || []),
-      {
-        role: "user",
-        content: body.userMessage,
-      },
-    ];
+    const parsedHistory = parseClientChatMessages(body.messages ?? []);
+    if (parsedHistory === null) {
+      return NextResponse.json(
+        { error: "Formato messages non valido" },
+        { status: 400 }
+      );
+    }
 
-    // RAG: retrieval cross-corpus (ai_logs + agents_md + repo_configs) con RRF
-    // Fallback silenzioso: se il retrieval fallisce, il tutor risponde senza contesto
+    const conversationMessages = buildAnthropicMessages(
+      parsedHistory,
+      body.userMessage
+    );
+
     let retrievedContext = "";
     let sources: RetrievedSource[] = [];
     try {
@@ -84,7 +89,6 @@ export async function POST(request: NextRequest) {
       const originalSourceCount = ragResult.sources.length;
       const finalTopK = parseRagFinalTopK();
 
-      // Reranker: con rerank OFF o errore applica comunque slice a finalTopK.
       const rerankResult = await rerank(
         body.userMessage,
         ragResult.sources,
@@ -111,14 +115,11 @@ export async function POST(request: NextRequest) {
       console.error("[RAG] Retrieval failed, continuing without context:", err);
     }
 
-    // Streaming response con SSE
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // Invia le sources come evento speciale PRIMA del testo Anthropic
-          // Il client le parserà e le rimuoverà dalla stringa visualizzata
           const sourcesPayload = JSON.stringify({ type: "sources", data: sources });
           controller.enqueue(
             encoder.encode(`__SOURCES__${sourcesPayload}__END_SOURCES__\n`)
@@ -129,25 +130,90 @@ export async function POST(request: NextRequest) {
             max_tokens: 1024,
             system: getRAGSystemPrompt(retrievedContext),
             messages: conversationMessages,
+            tools: getAnthropicTools(),
             stream: true,
           });
 
+          /** Traccia il tipo di blocco per indice (evita tend sui blocchi testo). */
+          const blockKindByIndex = new Map<number, "text" | "tool">();
+
           for await (const event of response) {
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "text_delta"
-            ) {
-              // Invia chunk di testo
-              controller.enqueue(
-                encoder.encode(event.delta.text)
-              );
+            if (!event || typeof event !== "object") continue;
+            const ev = event as {
+              type?: string;
+              index?: number;
+              delta?: {
+                type?: string;
+                text?: string;
+                partial_json?: string;
+              };
+              content_block?: {
+                type?: string;
+                id?: string;
+                name?: string;
+              };
+            };
+
+            switch (ev.type) {
+              case "content_block_start": {
+                const idx = readStreamIndex(ev);
+                const cb = ev.content_block;
+                if (cb?.type === "text") {
+                  blockKindByIndex.set(idx, "text");
+                } else if (cb?.type === "tool_use" && cb.id && cb.name) {
+                  blockKindByIndex.set(idx, "tool");
+                  controller.enqueue(
+                    encoder.encode(
+                      encodeStreamLine({
+                        v: 1,
+                        k: "tbeg",
+                        i: idx,
+                        id: cb.id,
+                        name: cb.name,
+                      })
+                    )
+                  );
+                }
+                break;
+              }
+              case "content_block_delta": {
+                const idx = readStreamIndex(ev);
+                const d = ev.delta;
+                if (!d) break;
+                if (d.type === "text_delta" && typeof d.text === "string") {
+                  controller.enqueue(
+                    encoder.encode(
+                      encodeStreamLine({ v: 1, k: "text", i: idx, d: d.text })
+                    )
+                  );
+                } else if (
+                  d.type === "input_json_delta" &&
+                  typeof d.partial_json === "string"
+                ) {
+                  controller.enqueue(
+                    encoder.encode(
+                      encodeStreamLine({ v: 1, k: "tjson", i: idx, p: d.partial_json })
+                    )
+                  );
+                }
+                break;
+              }
+              case "content_block_stop": {
+                const idx = readStreamIndex(ev);
+                if (blockKindByIndex.get(idx) === "tool") {
+                  controller.enqueue(
+                    encoder.encode(encodeStreamLine({ v: 1, k: "tend", i: idx }))
+                  );
+                }
+                break;
+              }
+              default:
+                break;
             }
           }
 
-          // Invia segnale fine stream
-          controller.enqueue(
-            encoder.encode("\n[DONE]")
-          );
+          controller.enqueue(encoder.encode(encodeStreamLine({ v: 1, k: "done" })));
+          controller.enqueue(encoder.encode("\n[DONE]"));
           controller.close();
         } catch (error) {
           const errorMessage =

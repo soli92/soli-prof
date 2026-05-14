@@ -5,11 +5,23 @@ import { MessageBubble } from "./message-bubble";
 import { ProcessingIndicator, type ProcessingPhase } from "./processing-indicator";
 import { SourceBadges, type Source } from "./source-badges";
 import { SoliLogo } from "./ui/logo-loader";
+import { AssistantMessage } from "./generative-ui/AssistantMessage";
+import type { AssistantBlock } from "@/lib/generative-ui/types";
+import {
+  applyStreamLine,
+  createEmptySlotMap,
+  finalizeStreamingSlots,
+  slotsToBlocks,
+} from "@/lib/generative-ui/merge-stream-slots";
+import { tryParseStreamLine } from "@/lib/generative-ui/stream-protocol";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
+  /** Testo semplice (messaggi utente o assistente legacy) */
   content: string;
+  /** Messaggio assistente strutturato (Generative UI) */
+  blocks?: AssistantBlock[];
   sources?: Source[];
   processingPhase?: ProcessingPhase | null;
 }
@@ -26,6 +38,7 @@ export function ChatView() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const streamSlotsRef = useRef(createEmptySlotMap());
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -45,7 +58,8 @@ export function ChatView() {
     };
     const assistantId = (Date.now() + 1).toString();
 
-    // Aggiunge user + placeholder assistant vuoto che verrà riempito dallo streaming
+    streamSlotsRef.current = createEmptySlotMap();
+
     setMessages((prev) => [
       ...prev,
       userMessage,
@@ -53,6 +67,7 @@ export function ChatView() {
         id: assistantId,
         role: "assistant",
         content: "",
+        blocks: [],
         processingPhase: "searching",
       },
     ]);
@@ -64,7 +79,15 @@ export function ChatView() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+          messages: messages.map((m) => {
+            if (m.role === "user") {
+              return { role: "user", content: m.content };
+            }
+            if (m.blocks && m.blocks.length > 0) {
+              return { role: "assistant", blocks: m.blocks };
+            }
+            return { role: "assistant", content: m.content };
+          }),
           userMessage: userMessageContent,
         }),
       });
@@ -77,37 +100,76 @@ export function ChatView() {
       if (!reader) throw new Error("No response body");
 
       const decoder = new TextDecoder();
-      let assistantContent = "";
+      let assistantPlainFallback = "";
       let errored = false;
-      // Buffer accumulativo: il blocco __SOURCES__...__END_SOURCES__ può arrivare
-      // spezzato su più chunk SSE (~16KB). Assumiamo che il marker sia sempre
-      // all'inizio dello stream; se il backend cambiasse ordine, andrebbe rivista
-      // questa logica.
       let rawBuffer = "";
+      let ndjsonLineBuffer = "";
       let sourcesParsed = false;
 
       const SOURCES_MARK = "__SOURCES__";
       const SOURCES_END = "__END_SOURCES__";
+
+      const flushNdjsonLines = (flushAll: boolean) => {
+        const buf = ndjsonLineBuffer;
+        if (!buf) return;
+        const lines = buf.split("\n");
+        const keep = flushAll ? "" : lines.pop() ?? "";
+        ndjsonLineBuffer = keep;
+        for (const line of lines) {
+          const pl = tryParseStreamLine(line);
+          if (!pl || pl.k === "done") continue;
+          applyStreamLine(streamSlotsRef.current, pl);
+        }
+        const nextBlocks = slotsToBlocks(streamSlotsRef.current);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  blocks: nextBlocks,
+                  content: "",
+                  processingPhase:
+                    nextBlocks.length > 0 && m.processingPhase === "searching"
+                      ? "writing"
+                      : m.processingPhase,
+                }
+              : m
+          )
+        );
+      };
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        rawBuffer += chunk;
 
-        let hitDone = false;
-        if (rawBuffer.includes("[DONE]")) {
-          hitDone = true;
-          rawBuffer = rawBuffer.replace(/\n?\[DONE\]/g, "");
+        if (!sourcesParsed && !errored) {
+          rawBuffer += chunk;
+        } else if (!errored) {
+          ndjsonLineBuffer += chunk;
         }
 
-        const errorMatch = rawBuffer.match(/\n?\[ERROR\]:\s*(.*)/);
+        let hitDone = false;
+        if (
+          (sourcesParsed ? ndjsonLineBuffer : rawBuffer).includes("[DONE]")
+        ) {
+          hitDone = true;
+          if (sourcesParsed) {
+            ndjsonLineBuffer = ndjsonLineBuffer.replace(/\n?\[DONE\]/g, "");
+          } else {
+            rawBuffer = rawBuffer.replace(/\n?\[DONE\]/g, "");
+          }
+        }
+
+        const errSource = sourcesParsed ? ndjsonLineBuffer : rawBuffer;
+        const errorMatch = errSource.match(/\n?\[ERROR\]:\s*(.*)/);
         if (errorMatch) {
           errored = true;
           const errMsg = errorMatch[1] || "Errore sconosciuto";
-          assistantContent = `Errore nella comunicazione con il tutor. Dettagli: ${errMsg}`;
+          assistantPlainFallback = `Errore nella comunicazione con il tutor. Dettagli: ${errMsg}`;
           rawBuffer = "";
+          ndjsonLineBuffer = "";
           sourcesParsed = true;
         }
 
@@ -115,13 +177,11 @@ export function ChatView() {
           if (rawBuffer.startsWith(SOURCES_MARK)) {
             const endIdx = rawBuffer.indexOf(SOURCES_END);
             if (endIdx === -1) {
-              // Blocco sources incompleto: non appendere come testo
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
                     ? {
                         ...m,
-                        content: assistantContent,
                         processingPhase:
                           hitDone ? null : m.processingPhase,
                       }
@@ -136,7 +196,7 @@ export function ChatView() {
             const afterMarker = rawBuffer
               .slice(endIdx + SOURCES_END.length)
               .replace(/^\n/, "");
-            rawBuffer = afterMarker;
+            rawBuffer = "";
 
             try {
               const payload = JSON.parse(jsonPayload) as {
@@ -167,18 +227,18 @@ export function ChatView() {
             }
 
             sourcesParsed = true;
+            ndjsonLineBuffer = afterMarker;
+            flushNdjsonLines(false);
           } else if (
             rawBuffer.length > 0 &&
             rawBuffer.length < SOURCES_MARK.length &&
             SOURCES_MARK.startsWith(rawBuffer)
           ) {
-            // Prefisso parziale di __SOURCES__: aspetta altri byte
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
                   ? {
                       ...m,
-                      content: assistantContent,
                       processingPhase:
                         hitDone ? null : m.processingPhase,
                     }
@@ -192,7 +252,6 @@ export function ChatView() {
                 m.id === assistantId
                   ? {
                       ...m,
-                      content: assistantContent,
                       processingPhase:
                         hitDone ? null : m.processingPhase,
                     }
@@ -201,28 +260,68 @@ export function ChatView() {
             );
             continue;
           } else {
-            // Nessun blocco sources (es. retrieval fallito): stream testuale normale
             sourcesParsed = true;
+            ndjsonLineBuffer = rawBuffer;
+            rawBuffer = "";
+            flushNdjsonLines(false);
           }
         }
 
-        if (rawBuffer) {
-          assistantContent += rawBuffer;
-          rawBuffer = "";
+        if (sourcesParsed && !errored) {
+          flushNdjsonLines(false);
         }
 
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? {
-                  ...m,
-                  content: assistantContent,
-                  processingPhase:
-                    errored || hitDone ? null : m.processingPhase,
-                }
-              : m
-          )
-        );
+        if (errored) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    content: assistantPlainFallback,
+                    blocks: undefined,
+                    processingPhase: null,
+                  }
+                : m
+            )
+          );
+          break;
+        }
+
+        if (hitDone) {
+          finalizeStreamingSlots(streamSlotsRef.current);
+          flushNdjsonLines(true);
+          const finalBlocks = slotsToBlocks(streamSlotsRef.current);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    ...(finalBlocks.length > 0
+                      ? { blocks: finalBlocks, content: "" }
+                      : {
+                          content:
+                            "Il tutor non ha prodotto contenuto in questo turno. Riprova.",
+                          blocks: undefined,
+                        }),
+                    processingPhase: null,
+                  }
+                : m
+            )
+          );
+        }
+
+        if (!errored && !hitDone) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    processingPhase: m.processingPhase,
+                  }
+                : m
+            )
+          );
+        }
 
         if (errored) break;
       }
@@ -235,6 +334,7 @@ export function ChatView() {
             ? {
                 ...m,
                 content: `Errore nella comunicazione con il tutor. Dettagli: ${errMsg}`,
+                blocks: undefined,
                 processingPhase: null,
               }
             : m
@@ -272,9 +372,24 @@ export function ChatView() {
             <div key={message.id}>
               {message.role === "user" ? (
                 <MessageBubble role={message.role} content={message.content} />
+              ) : message.blocks && message.blocks.length > 0 ? (
+                <>
+                  <AssistantMessage blocks={message.blocks} />
+                  <div className="flex justify-start mb-2 ml-1 min-h-[36px]">
+                    {message.processingPhase != null && (
+                      <ProcessingIndicator
+                        phase={message.processingPhase}
+                        visible={true}
+                      />
+                    )}
+                  </div>
+                  {message.sources && message.processingPhase == null && (
+                    <div className="ml-1 -mt-2 mb-4">
+                      <SourceBadges sources={message.sources} />
+                    </div>
+                  )}
+                </>
               ) : message.content === "" ? (
-                // Bubble assistant ancora vuota → mostro SOLO l'indicatore
-                // Container con min-height stabile per evitare layout shift
                 <div className="flex justify-start mb-4 min-h-[44px]">
                   {message.processingPhase != null && (
                     <ProcessingIndicator
@@ -284,11 +399,8 @@ export function ChatView() {
                   )}
                 </div>
               ) : (
-                // Bubble assistant con contenuto
                 <>
                   <MessageBubble role={message.role} content={message.content} />
-                  {/* Area indicatore con height stabile: resta presente ma invisibile
-                      quando processingPhase diventa null → no layout shift */}
                   <div className="flex justify-start mb-2 ml-1 min-h-[36px]">
                     {message.processingPhase != null && (
                       <ProcessingIndicator
